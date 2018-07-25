@@ -36,10 +36,10 @@ Read data from directory 'C:/Users/dgallen/Desktop/R/Reliability'
 # dat <- read.csv('N_2_final_rev3.csv',stringsAsFactors = FALSE)
 # dat <- read.csv('S_3_final_rev3.csv',stringsAsFactors = FALSE)
 # dat <- read.csv('S_4_final_rev2.csv',stringsAsFactors = FALSE)
-dat <- read.csv('3_N.csv',stringsAsFactors = FALSE)
+# dat <- read.csv('3_N.csv',stringsAsFactors = FALSE)
 # dat <- read.csv('4_N.csv',stringsAsFactors = FALSE)
 # dat <- read.csv('1_S.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('2_S.csv',stringsAsFactors = FALSE)
+dat <- read.csv('2_S.csv',stringsAsFactors = FALSE)
 ```
 
 
@@ -82,10 +82,10 @@ colnames(dat)[1] <- "TimeStamp"
 ### NORTH OF 694
 
 # 3N
-Dist1 <- 1.95
-Exist1 <- 62579
-Future <- 1.161
-Lanes <- 3
+# Dist1 <- 1.95
+# Exist1 <- 62579
+# Future <- 1.161
+# Lanes <- 3
 
 # 4N
 # Dist1 <- 1.6
@@ -100,10 +100,10 @@ Lanes <- 3
 # Lanes <- 2
 
 # 2S
-# Dist1 <- 1.95
-# Exist1 <- 60645
-# Future <- 1.153
-# Lanes <- 3
+Dist1 <- 1.95
+Exist1 <- 60645
+Future <- 1.153
+Lanes <- 3
 
 head(dat)
 ```
@@ -142,7 +142,7 @@ Rel_2014 <- dat %>% mutate(Vol_15_min  = VMT_total/Dist1,
                                                 ifelse(Crash == 1, 
                                                        'Crash',
                                                        'None'))),
-                           Delay       = ifelse(Delay_type == 'None', 'No_Delay', 'Delay'),
+                           is_Delay       = ifelse(Delay_type == 'None', 'No_Delay', 'Delay'),
                            Index = seq(1,length(Speed),1)) %>%
   filter(!is.na(DateTime))
 ```
@@ -162,10 +162,10 @@ Rel_2014 <- Rel_2014 %>%
   mutate(Rollavg = (rollmean(TT_mean,k=8,fill = TT_mean, align = 'right') +
                       rollmean(TT_mean,k=8,fill = TT_mean, align = 'left'))/2) %>%
   mutate(outlier = ifelse(abs(Rollavg - TT_mean) > 6 * sd(Rollavg), TRUE, FALSE)) %>%
-  filter(Dens <= 100) #4N
+  # filter(Dens <= 75) #4N
   # filter(Dens <= 50) #3N
-  # filter(Dens <= 100) #1S
-  # filter(Dens <= 55) #2S
+  # filter(Dens <= 80) #1S
+  filter(Dens <= 75) #2S
 
 boxplot(Rel_2014$Dens)
 ```
@@ -186,13 +186,11 @@ Rel_2014$cut <- cut(Rel_2014$Dens,bins,include.lowest = TRUE)
 Rel_2014$Density_bin <- as.numeric(stringi::stri_match_last_regex(Rel_2014$cut,'[0-9]+')) 
 
 Rel_2014 %>%
-  group_by(Density_bin,Delay) %>%
+  group_by(Density_bin,is_Delay) %>%
   summarise(Count = n()) %>%
   arrange(Density_bin) %>%
-  dcast(Density_bin ~ Delay)
+  dcast(Density_bin ~ is_Delay)
 ```
-
-
 
 
 ### Percentile Bins
@@ -212,7 +210,7 @@ For each quantile a travel time quantile is calculated. We also want to calculat
 
 Rel_2014_bin_dt <- Rel_2014 %>%
   mutate(Density_bin = as.numeric(stringi::stri_match_last_regex(cut,'[0-9]+'))) %>%
-  group_by(Delay,Density_bin) %>%
+  group_by(is_Delay,Density_bin) %>%
   # group_by(Delay_type,Density_bin) %>%
   summarise(quantiles = list(sprintf("%1.0f%%", p*100)),
             TT_quantile = list(quantile(TT_mean,p))) %>%
@@ -224,7 +222,7 @@ Rel_2014_bin_dt <- Rel_2014 %>%
 
 Rel_2014_FF <- Rel_2014_bin_dt %>%
   # group_by(Delay_type,quantiles) %>%
-  group_by(Delay,quantiles) %>%
+  group_by(is_Delay,quantiles) %>%
   summarise(FF_quantile = round(quantile(Flow/Density_bin,.95, na.rm = TRUE),0))
 
 
@@ -237,12 +235,12 @@ head(Rel_2014_bin_dt)
 
 The Free Flow speeds were calcuated using the 95th percentile speeds. 
 
-```{r, fig.width = 11}
+```{r free flow plot, fig.width = 11}
 ff <- ggplot()+
   geom_point(data = data.frame(Rel_2014_bin_dt),aes(x=Density_bin,y=Flow, color=quantiles))+
   geom_abline(data = data.frame(Rel_2014_FF), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
   # facet_grid(~Delay_type)
-  facet_grid(~Delay)
+  facet_grid(~is_Delay)
 ggplotly(ff)
 ```
 
@@ -252,11 +250,12 @@ A look at the Density vs travel time plots. A generic smooting function has been
 ```{r Density vs TT, fig.width = 11}
 tt <- ggplot()+
   geom_point(data=Rel_2014_bin_dt,aes(x= Density_bin,y = TT_quantile, color= quantiles))+
-  geom_smooth(data=Rel_2014_bin_dt,aes(x= Density_bin,y = TT_quantile, color= quantiles),se=F)+
+  geom_smooth(data=Rel_2014_bin_dt,aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
   # facet_grid(~Delay_type)
-  facet_grid(~Delay)
+  facet_grid(~is_Delay)
 ggplotly(tt)
 ```
+
 
 
 We need to find the congestion point for each Delay type and percentile.
@@ -296,9 +295,9 @@ We need to find the congestion point for each Delay type and percentile.
 
 model <- Rel_2014_bin_dt %>%
   # filter(Delay_type == 'None') %>%
-  nest(-Delay,-quantiles) %>%
+  nest(-is_Delay,-quantiles) %>%
   # as.tibble() %>%
-  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 0.75, data = .,)),
+  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 1, data = .,)),
          results = map(fit, augment)) %>% 
   as.tibble() %>%
   unnest(results)
@@ -308,23 +307,24 @@ model <- Rel_2014_bin_dt %>%
 ```{r}
 
 model_max <- model %>%
-  group_by(Delay,quantiles) %>%
+  group_by(is_Delay,quantiles) %>%
   # group_by(Delay_type,quantiles) %>%
   # summarise(max = max(.fitted))
   filter(.fitted == max(.fitted)) %>%
-  select(Delay, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
+  select(is_Delay, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
   # select(Delay_type, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
 
-# model_max_NF <- model %>%
-#   filter(Delay_type == 'None') %>%
-#   group_by(Delay_type,quantiles) %>%
-#   # summarise(max = max(.fitted))
-#   filter(.fitted == max(.fitted)) %>%
-#   select(Delay_type, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
-# 
-# model_max_NF <- rbind(ungroup(model_max_NF),
-#                       mutate(ungroup(model_max_NF), Delay_type = 'Crash'),
-#                       mutate(ungroup(model_max_NF), Delay_type = 'Weather'))
+
+
+#1_S EDITS
+model_max <- model_max %>% 
+  # filter(is_Delay == 'No_Delay',
+  #        quantiles == '90%' | quantiles == '95%') %>%
+  mutate(Cong_Density = replace(Cong_Density, Cong_Density == 76, 40)) %>%
+  mutate(Cong_Density = replace(Cong_Density, is_Delay == 'No_Delay' & quantiles == '75%', 32)) %>%
+  mutate(Cong_Flow = replace(Cong_Flow, is_Delay == 'No_Delay' & quantiles == '75%', 1136)) %>%
+  as.data.frame()
+
 
 ```
 
@@ -365,14 +365,14 @@ ggplotly(f)
 ```{r plots no delay, fig.width = 10, fig.height=5}
 
 dat <- filter(Rel_2014_bin_dt,
-              Delay == 'No_Delay')
+              is_Delay == 'No_Delay')
 
 f <- ggplot()+
   geom_point(data=dat,
              aes(x= Density_bin,y = Flow, color= quantiles))+
   geom_smooth(data=dat,
-              aes(x= Density_bin,y = Flow, color= quantiles),span =0.75,se=F)+
-  geom_vline(data=filter(model_max,Delay == 'No_Delay'),aes(xintercept=Cong_Density, color = quantiles)) +
+              aes(x= Density_bin,y = Flow, color = quantiles),span =1,se=F)+
+  geom_vline(data=filter(model_max,is_Delay == 'No_Delay'),aes(xintercept=Cong_Density, color = quantiles)) +
   # geom_vline(data=filter(model_max,Delay_type != 'None'),aes(xintercept=Cong_Density, color = quantiles)) +
   ggtitle('Delay Type = "None"')
 ggplotly(f)
@@ -392,7 +392,7 @@ TTI is the travel time divided by the travel time at Free Flow.
 
 
 ```{r calculate demand}
-Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('Delay','quantiles')) %>%
+Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('is_Delay','quantiles')) %>%
 # Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('Delay_type','quantiles')) %>%
   mutate(Demand = ifelse(Density_bin <= Cong_Density,Flow,2*Cong_Flow - Flow),
          DC = Demand/Cong_Flow) 
@@ -403,18 +403,18 @@ Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('Delay','quantiles')) 
 
 s <- ggplot()+
   # geom_point(data=Rel_2014_bin_dt,aes(x= Demand,y = TTI_pred, color= quantiles))+
-  geom_smooth(data=Rel_2014_bin_dt,aes(x= Demand,y = TTI, color= quantiles),se=F,span = 0.75)+
+  geom_smooth(data=Rel_2014_bin_dt,aes(x= Demand,y = TTI, color= quantiles),se=F,span = 1)+
   geom_point(data=Rel_2014_bin_dt,aes(x= Demand,y = TTI, color= quantiles))+
   # geom_smooth(se=F)+
   # geom_abline(data=Rel_2014_FF,aes(slope = FF,intercept = FF,colour = as.factor(quantiles)))+
-  facet_grid(~Delay)
+  facet_grid(~is_Delay)
 ggplotly(s)
 
 
 ```
 
 
-## Model
+## Future Model
 
 We now fit a curve to model the demand. 
 
@@ -426,12 +426,12 @@ Below is the model output for no delay conditions, 50th percentile:
 
 ```{r develop model}
 sample_data <- Rel_2014_bin_dt %>%
-  filter(Delay == 'No_Delay',
-         quantiles == '95%') %>%
+  filter(is_Delay == 'No_Delay',
+         quantiles == '75%') %>%
   select(DC, TTI)
 
 
-formulaExp <- as.formula(TTI ~(DC <= .2) + (DC > .2) * ( mu * (DC ^ b)))
+formulaExp <- as.formula(TTI ~(DC <= .55) + (DC > .55) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
 # preview(formulaExp, data = sample_data, start = list(mu, b))
@@ -439,7 +439,7 @@ mu <- 1.5
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
-pred <- data.frame(DC = 0.99)
+pred <- data.frame(DC = 1.57)
 predict(sample_nls,pred)
 ```
 
@@ -475,17 +475,28 @@ predict(sample_nls,pred)
 #   select(Delay_type,quantiles,br)
 
 # 3N
-breaks <- model_max %>% data.frame() %>%
-  mutate(br = c(0.95,0.93,0.96,0.44,0.34,0.37,0.35,
-                0.88,0.79,0.88,0.46,0.3,0.2,0.3)) %>%
-  select(Delay,quantiles,br)
+# breaks <- model_max %>% data.frame() %>%
+#   mutate(br = c(0.95,0.93,0.96,0.44,0.34,0.37,0.35,
+#                 0.88,0.79,0.88,0.46,0.3,0.2,0.3)) %>%
+#   select(is_Delay,quantiles,br)
 
 # 4N
 # breaks <- model_max %>% data.frame() %>%
 #   mutate(br = c(0.77,0.74,0.75,0.7,0.64,0.58,0.2,
 #                 0.8,0.67,0.82,0.3,0.17,0.2,0.1)) %>%
-#   select(Delay,quantiles,br)
+#   select(is_Delay,quantiles,br)
 
+# 1S
+# breaks <- model_max %>% data.frame() %>%
+#   mutate(br = c(0.95,0.96,0.96,0.98,1.02,1.01,0.99,
+#                 0.89,0.89,0.89,0.9,0.92,0.94,0.94)) %>%
+#   select(is_Delay,quantiles,br)
+
+# 2S
+breaks <- model_max %>% data.frame() %>%
+  mutate(br = c(0.84,0.81,0.81,.76,0.7,0.66,0.62,
+                0.9,0.85,0.89,0.72,0.55,0.57,0.48)) %>%
+  select(is_Delay,quantiles,br)
 
 Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,breaks)
 ```
@@ -504,7 +515,7 @@ formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 
 model_nls <- Rel_2014_bin_dt %>%
   # nest(-Delay_type,-quantiles) %>%
-  nest(-Delay,-quantiles) %>%
+  nest(-is_Delay,-quantiles) %>%
   mutate(fit = purrr::map(data, func_exp)) 
   # mutate(pred = purrr::map2(fit,data,predict)) %>%
   # unnest(data,pred)
@@ -518,7 +529,7 @@ We join each model back to the original dataset and create a predicted TTI for e
 ```{r join roll up, include=FALSE}
 
 Rel_2014_TT_dt <- Rel_2014 %>%
-  select(Delay,Density_bin,TT_quantile = TT_mean, Index) %>%
+  select(is_Delay,Density_bin,TT_quantile = TT_mean, Index) %>%
   # select(Delay_type,Density_bin,TT_quantile = TT_mean, Index) %>%
   data.table()
 
@@ -526,11 +537,17 @@ Rel_2014_TT_dt <- Rel_2014 %>%
 Rel_2014_bin_dt <- data.table(Rel_2014_bin_dt) %>% select(-quantiles,quantiles)
 setkey(Rel_2014_bin_dt, NULL)
 # setkey(Rel_2014_bin_dt,Delay_type,TT_quantile,Density_bin)
-setkey(Rel_2014_bin_dt,Delay,TT_quantile,Density_bin)
+setkey(Rel_2014_bin_dt,is_Delay,Density_bin)
+Rel_2014_bin_dt <-  Rel_2014_bin_dt[!duplicated(Rel_2014_bin_dt[,1:4]),]
+
+setkey(Rel_2014_bin_dt, NULL)
+# setkey(Rel_2014_bin_dt,Delay_type,TT_quantile,Density_bin)
+setkey(Rel_2014_bin_dt,is_Delay,Density_bin,TT_quantile)
+
 join_TT <- Rel_2014_bin_dt[Rel_2014_TT_dt, roll = 'nearest', .(TT_q = x.TT_quantile,
                                                  TT_mean = i.TT_quantile,
                                                  Density_bin = Density_bin,
-                                                 Delay = Delay,
+                                                 is_Delay = is_Delay,
                                                  # Delay_type = Delay_type,
                                                  Quantiles = quantiles,
                                                  FF = FF_quantile,
@@ -538,6 +555,8 @@ join_TT <- Rel_2014_bin_dt[Rel_2014_TT_dt, roll = 'nearest', .(TT_q = x.TT_quant
                                                  Cong_Density = Cong_Density,
                                                  Index = Index,
                                                  br = br)]
+
+# join_TT <- Rel_2014_bin_dt[Rel_2014_TT_dt, roll = 'nearest']
 
 join_TT <- join_TT[!duplicated(join_TT$Index),]
 
@@ -550,17 +569,17 @@ Rel_2014_f <- Rel_2014_f %>%
          DC = Demand/Cong_Flow,
          TTI = TT_mean/(Dist1/FF * 60)) %>%
   # nest(-Delay_type, -Quantiles)
-  nest(-Delay, -Quantiles)
+  nest(-is_Delay, -Quantiles)
 
 # Rel_2014_f <- merge(Rel_2014_f,model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
-Rel_2014_f <- merge(Rel_2014_f,model_nls %>% select(Delay, Quantiles = quantiles, fit)) %>%
+Rel_2014_f <- merge(Rel_2014_f,model_nls %>% select(is_Delay, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
   unnest(data,pred)
 ```
 
-```{r}
+```{r testing}
 x <- data.table(
   # Col1 = c('a','b','c','d','e','f'),
   Col2 = c(1000,30,40)
@@ -594,8 +613,13 @@ da <- dt[ds,  roll = "nearest", ]
 
 d <- Rel_2014_bin_dt[c(1,74,400,432),]
 f <- Rel_2014_TT_dt[1:10,]
-setkey(d,Delay,Density_bin)
+setkey(d,is_Delay,Density_bin)
 g <- d[f,roll='nearest']
+
+
+dup <- Rel_2014_bin_dt[1:20,1:4]
+setkey(dup,is_Delay,Density_bin,TT_quantile)
+dup$dupo <- duplicated(dup)
 ```
 
 
@@ -604,8 +628,10 @@ g <- d[f,roll='nearest']
 
 pr <- ggplot(Rel_2014_f, aes(x=TTI,y=pred, color=Quantiles))+
   geom_point()+
+  scale_x_continuous(breaks = c(1,2,3,4,5))+
+  scale_y_continuous(breaks = c(1,2,3,4,5,6))+
   # facet_grid(~Delay_type)
-  facet_grid(~Delay)
+  facet_grid(~is_Delay)
 ggplotly(pr)
 
 ```
@@ -615,8 +641,10 @@ ggplotly(pr)
 Rel_2014_p <- Rel_2014_f %>%
   mutate(F_Dem = Demand * Future,
          DC    = F_Dem/Cong_Flow) %>%
-  nest(-Delay_type,-Quantiles) %>%
-  merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  # nest(-Delay_type,-Quantiles) %>%
+  nest(-is_Delay,-Quantiles) %>%
+  # merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  merge(model_nls %>% select(is_Delay, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
@@ -634,8 +662,8 @@ seq_15min_2015 <- seq_15min_2015[-1,] %>% data.frame(DateTime = .)
 
 Rel_2014_p <- merge(seq_15min_2015, Rel_2014_p, all.x = TRUE)
 
-write.csv(Rel_2014_p,'4_s_predict.csv',row.names = FALSE)
-
+write.csv(Rel_2014_p,'4_N_predict.csv',row.names = FALSE)
+getwd()
 ```
 
 
