@@ -1,6 +1,7 @@
 ---
 title: "I 94 Reliability"
 output:
+  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -759,19 +760,37 @@ therm <- TT_heat %>%
 therm_table <- flextable(therm)
 # theme_vanilla(therm_table)
 
-bg(therm_table, i = ~ TTI  > 1.5, j =  ~ TTI, bg = myColors[[9]])
-      # ~ TTI <= 4.0 & TTI > , color = myColors[[2]],
-      # ~ TTI <= 3.5 & TTI > 3.0, color = myColors[[3]],
-      # ~ TTI <= 3.0 & TTI > 2.5, color = myColors[[4]],
-      # ~ TTI <= 2.5 & TTI > 2.0, color = myColors[[5]],
-      # ~ TTI <= 2.0 & TTI > 1.5, color = myColors[[6]],
-      # ~ TTI <= 1.5 & TTI > 1.25, color = myColors[[7]],
-      # ~ TTI <= 1.25 & TTI > 1.0, color = myColors[[8]],
-      # ~ TTI <= 1.0 , color = myColors[[9]])
+therm_table <- bg(therm_table, i = ~ TTI  > 4, j =  ~ TTI, bg = myColors[[1]])
+therm_table <- bg(therm_table, i = ~ TTI <= 4.0 & TTI > 3.5,j =  ~ TTI, bg = myColors[[2]])
+therm_table <- bg(therm_table, i = ~ TTI <= 3.5 & TTI > 3.0,j =  ~ TTI, bg = myColors[[3]])
+therm_table <- bg(therm_table, i = ~ TTI <= 3.0 & TTI > 2.5,j =  ~ TTI, bg = myColors[[4]])
+therm_table <- bg(therm_table, i = ~ TTI <= 2.5 & TTI > 2.0,j =  ~ TTI, bg = myColors[[5]])
+therm_table <- bg(therm_table, i = ~ TTI <= 2.0 & TTI > 1.5,j =  ~ TTI, bg = myColors[[6]])
+therm_table <- bg(therm_table, i = ~ TTI <= 1.5 & TTI > 1.25,j =  ~ TTI, bg = myColors[[7]])
+therm_table <- bg(therm_table, i = ~ TTI <= 1.25 & TTI > 1.0,j =  ~ TTI, bg = myColors[[8]])
+therm_table <- bg(therm_table, i = ~ TTI <= 1.0 ,j =  ~ TTI, bg = myColors[[9]])
+therm_table
 
+# read_docx() %>% 
+#   # body_add_flextable(therm_table) %>% 
+#   body_add_img(therm_table) %>% 
+#   print(target = "flextable.docx")
 
 
 ```
+
+```{r thermometer image}
+insert_screenshot = function(x, png_file ) {
+  htmltools::save_html(htmltools_value(x), 'temp.html')
+  res = webshot::webshot('temp.html', png_file, vwidth = 250, vheight = 440)
+  unlink('temp.html')
+  res
+}
+insert_screenshot(therm_table, 'Thermometer.png')
+```
+
+
+![Caption for the picture.](Thermometer.png)
 
 
 
