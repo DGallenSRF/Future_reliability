@@ -21,6 +21,8 @@ library(plotly)
 library(broom)
 library(nlstools)
 library(purrr)
+library(flextable)
+library(officer)
 
 ```
 
@@ -705,7 +707,7 @@ write.csv(Rel_2014_p,'2_S_predict.csv',row.names = FALSE)
 getwd()
 ```
 
-```{r}
+```{r heatmap}
  TT_heat <- Rel_2014 %>% 
    select(DateTime, TT_mean, YearDay) %>% 
    mutate(HourMin = format(DateTime, '%H:%M'),
@@ -729,6 +731,14 @@ getwd()
                                  '45 mph TT - 1.5 TTI',
                                  'Speed Limit TT - 45 mph TT',
                                  '<Speed Limit TT')))) 
+
+library(RColorBrewer)
+myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
+names(myColors) <- levels(TT_heat$TTI_Cat)
+colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors)
+fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors)
+break_axis <- c('06:00','09:00','12:00','15:00','18:00','21:00')
+
  g <- ggplot(TT_heat) +
    geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
    theme_tufte(base_size = 15) +
@@ -737,6 +747,31 @@ getwd()
  g
 ```
 
+```{r thermometer}
+quants <- seq(.025,.975,.05)
+
+therm <- TT_heat %>%
+  summarise(quantiles = list(sprintf("%1.1f%%", quants*100)),
+            TT_quantile = list(quantile(TT_mean,quants))) %>%
+  unnest() %>%
+  select(quantiles, TTI = TT_quantile)
+
+therm_table <- flextable(therm)
+# theme_vanilla(therm_table)
+
+bg(therm_table, i = ~ TTI  > 1.5, j =  ~ TTI, bg = myColors[[9]])
+      # ~ TTI <= 4.0 & TTI > , color = myColors[[2]],
+      # ~ TTI <= 3.5 & TTI > 3.0, color = myColors[[3]],
+      # ~ TTI <= 3.0 & TTI > 2.5, color = myColors[[4]],
+      # ~ TTI <= 2.5 & TTI > 2.0, color = myColors[[5]],
+      # ~ TTI <= 2.0 & TTI > 1.5, color = myColors[[6]],
+      # ~ TTI <= 1.5 & TTI > 1.25, color = myColors[[7]],
+      # ~ TTI <= 1.25 & TTI > 1.0, color = myColors[[8]],
+      # ~ TTI <= 1.0 , color = myColors[[9]])
+
+
+
+```
 
 
 
