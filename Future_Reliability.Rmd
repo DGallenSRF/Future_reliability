@@ -705,6 +705,37 @@ write.csv(Rel_2014_p,'2_S_predict.csv',row.names = FALSE)
 getwd()
 ```
 
+```{r}
+ TT_heat <- Rel_2014 %>% 
+   select(DateTime, TT_mean, YearDay) %>% 
+   mutate(HourMin = format(DateTime, '%H:%M'),
+          YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
+          TTI = TT_mean/(Dist1/60 * 60),
+          TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
+                     ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
+                     ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
+                     ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
+                     ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
+                     ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
+                     ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
+                     ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
+                     ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
+                     levels = (c('>4.0 TTI',
+                                 '3.5 TTI - 4.0 TTI',
+                                 '3.0 TTI - 3.5 TTI',
+                                 '2.5 TTI - 3.0 TTI',
+                                 '2.0 TTI - 2.5 TTI',
+                                 '1.5 TTI - 2.0 TTI',
+                                 '45 mph TT - 1.5 TTI',
+                                 'Speed Limit TT - 45 mph TT',
+                                 '<Speed Limit TT')))) 
+ g <- ggplot(TT_heat) +
+   geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
+   theme_tufte(base_size = 15) +
+   scale_y_discrete(breaks = break_axis) +
+   colScale + fillScale
+ g
+```
 
 
 
