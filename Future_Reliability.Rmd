@@ -1,13 +1,12 @@
 ---
-title: "I 94 Reliability"
+title: "I 494 Reliability"
 output:
-  pdf_document: default
   html_document:
     df_print: paged
 ---
 
 ```{r setup,message=FALSE, include=FALSE}
-knitr::opts_knit$set(root.dir = 'C:/Users/dgallen/Desktop/R/Reliability')
+knitr::opts_knit$set(root.dir = 'H:/Projects/11000/11155/TraffStudy/Reliability/Reliability_processing')
 
 ##below are a list of packages required to run the markdown file
 library(tidyverse)
@@ -24,102 +23,57 @@ library(nlstools)
 library(purrr)
 library(flextable)
 library(officer)
-
+library(readxl)
+library(DBI)
+library(odbc)
+library(ggthemes)
+library(leaflet)
 ```
 
 
 
+## LOAD DATA 
 
-## Segment 4 N 
 
-Read data from directory 'C:/Users/dgallen/Desktop/R/Reliability'
+```{r read data from SQL, include = FALSE}
 
-```{r read data, include = FALSE}
-# dat <- read.csv('N_1_final_rev2.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('N_2_final_rev3.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('S_3_final_rev3.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('S_4_final_rev2.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('3_N.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('4_N.csv',stringsAsFactors = FALSE)
-# dat <- read.csv('1_S.csv',stringsAsFactors = FALSE)
-dat <- read.csv('2_S.csv',stringsAsFactors = FALSE)
+drv <- DBI::dbConnect(odbc(),
+                      driver = 'SQL Server',
+                      server = 'VS-SQL02',
+                      database = 'Traffic',
+                      uid = 'TrafficUser',
+                      pwd = 'dubliNmusTang',
+                      port = 5432)
+
+Data_494 <- DBI::dbReadTable(drv, 'Existing494')
 ```
 
 
 ```{r fix column names, include = FALSE}
 
-colnames(dat) <-trimws(colnames(dat))
-colnames(dat)[1] <- "TimeStamp"
+##Turn SQL time (UTC) to US/Central
 
+Data_494$DateTime <- as.POSIXct(as.POSIXlt(Data_494$DateTime, tz = 'America/Chicago'))
 ```
 
+```{r initial load of segment data in database, include=FALSE}
 
-```{r set fixed values, include=FALSE}
+path <- 'H:/Projects/11000/11155/TraffStudy/Reliability/'
+Seg <- read_xls(paste(path,
+                      'Segment_494_TableToExcel.xls',
+                      sep = ''))
 
-# 1N
-# Dist1 <- 2.18
-# Exist1 <- 129000
-# Future <- 1.078
-# Lanes <- 4
+Seg <- Seg %>%
+  select(everything(),Nearest_Station = `Nearest Station`) %>%
+  select(Direction, Segment_No, Segment_Location, LAT, LONG, INT, Measure_Round, Nearest_Station, Length) %>%
+  mutate(Lanes = 4,
+         Future = '-',
+         Exist_Demand = '-')
 
-
-#2N
-# Dist1 <- 2.88
-# Exist1 <- 121310
-# Future <- 1.077
-# Lanes <- 5
-
-#3S
-# Dist1 <- 2.88
-# Exist1 <- 121793
-# Future <- 1.079
-# Lanes <- 3
-
-# 4S
-# Dist1 <- 2.18
-# Exist1 <- 12900
-# Future <- 1.078
-# Lanes <- 4
-
-
-### NORTH OF 694
-
-# 3N
-# Dist1 <- 1.95
-# Exist1 <- 62579
-# Future <- 1.161
-# Lanes <- 3
-
-# 4N
-# Dist1 <- 1.6
-# Exist1 <- 56000
-# Future <- 1.143
-# Lanes <- 2.5
-
-# 1S
-# Dist1 <- 1.6
-# Exist1 <- 56000
-# Future <- 1.155
-# Lanes <- 2
-
-# 2S
-Dist1 <- 1.95
-Exist1 <- 60645
-Future <- 1.153
-Lanes <- 3
-
-head(dat)
+DBI::dbWriteTable(drv, 'Segments_494', Seg, overwrite = TRUE)
 ```
 
-### Set fixed values. 
-
-Distance of segment is `r Dist1`
-Existing Demand is `r Exist1`
-Lanes in segment: `r Lanes`
-
-
-
-### Add variables to the existing dataset. 
+### Add variables to the existing dataset 
 
 15 minute volume takes the VMT for each time bin and divides by the length of the segment. Unit: Vehicles per mile.
 Speed is the segment length divided by the travel time ( * 60). Unit: Miles per hour.
@@ -128,84 +82,151 @@ Density is the Hourly Flow divided by speed. Unit: Vehicles per hour.
 
 We also create a variable that measures the delay type experienced by the segment. Weather (snow) events and crashes were tracked for the time period. If the segment experiences a weather event and a crash, weather will be the controlling delay type.
 
+
 ```{r add_variables}
 
-Rel_2014 <- dat %>% mutate(Vol_15_min  = VMT_total/Dist1,
-                           Speed       = Dist1/TT_mean*60,
-                           Hourly_Flow = Vol_15_min*4/Lanes,
-                           Dens        = Hourly_Flow/Speed,
-                           # DateTime    = as.POSIXct(TimeStamp,format="%m/%d/%Y %H:%M"),
-                           DateTime    = as.POSIXct(TimeStamp,format="%Y%m%d %H:%M"),
-                           # Hour        = as.factor(format(DateTime,format = '%H')),
-                           # Month       = as.factor(format(DateTime,format = '%m')),
-                           WeekDay     = as.factor(weekdays(DateTime)),
-                           DateTimeSec = as.numeric(DateTime),
-                           Delay_type  = (ifelse(Weather == 1, 
-                                                'Weather',
-                                                ifelse(Crash == 1, 
-                                                       'Crash',
-                                                       'None'))),
-                           is_Delay       = ifelse(Delay_type == 'None', 'No_Delay', 'Delay'),
-                           Index = seq(1,length(Speed),1)) %>%
+Segments_494 <- DBI::dbReadTable(drv, 'Segments_494') %>%
+  filter(!is.na(Length)) %>%
+  select(Segment = Segment_No, Lanes, Length) %>%
+  arrange(Segment)
+
+Data_494 <- merge(Data_494, Segments_494, by = 'Segment')
+
+Rel <- Data_494 %>% 
+  mutate(Vol_15_min  = VMT_total/Length,
+         Speed       = Length/TT_mean*60,
+         Hourly_Flow = Vol_15_min*4/Lanes,
+         Dens        = Hourly_Flow/Speed,
+         Hour        = as.factor(format(DateTime,format = '%H')),
+         Month       = as.factor(format(DateTime,format = '%m')),
+         WeekDay     = as.factor(weekdays(DateTime)),
+         DateTimeSec = as.numeric(DateTime)) %>%
   filter(!is.na(DateTime))
 ```
 
-```{r}
 
-# library(randomForest)
-# rf <- randomForest(TT_mean ~ WeekDay + Hour + Month + Dens + VMT_total, data = Rel_2014, ntree = 1000)
+``` {r add_conditionals}
+
+test_list <- list()
+result <- vector()
+for (i in 1:length(Rel$weather)){
+  n <- 8
+  n <- ifelse(i < n, i, n)
+  test_list[i] <- list(Rel$weather[i:(i-n)])
+  result[i] <- ifelse(unlist(any(test_list[[i]] == 1)),1,0)
+}
+rm(test_list)
+head(result)
+
+Rel$weather2hour <- result
+
+test_list <- list()
+result <- vector()
+for (i in 1:length(Rel$Crash)){
+  n <- 4
+  n <- ifelse(i < n, i, n)
+  test_list[i] <- list(Rel$Crash[i:(i-n)])
+  result[i] <- ifelse(unlist(any(test_list[[i]] == 1)),1,0)
+}
+rm(test_list)
+head(result)
+
+Rel$Crash2hour <- result
+
+Rel <- Rel %>% 
+  mutate(Delay_type  = (ifelse(weather2hour == 1, 
+                               'Weather',
+                               ifelse(Crash2hour == 1, 
+                                      'Crash',
+                                      'None'))),
+         is_Delay       = ifelse(Delay_type == 'None', 
+                                 'No_Delay',
+                                 'Delay'),
+         Index = seq(1,length(Speed),1),
+         Is_weekday = ifelse(WeekDay %in% c('Monday','Tuesday','Wednesday','Thursday','Friday'),1,0))
 
 ```
 
 
+```{r linear model}
+dat <- Rel[Rel$Segment == 8,]
 
-```{r filter for outlier}
+smp_size <- floor(0.75 * nrow(dat))
+set.seed(543)
+train_ind <- sample(seq_len(nrow(dat)), size = smp_size)
 
-Rel_2014 <- Rel_2014 %>%
-  mutate(Rollavg = (rollmean(TT_mean,k=8,fill = TT_mean, align = 'right') +
-                      rollmean(TT_mean,k=8,fill = TT_mean, align = 'left'))/2) %>%
-  mutate(outlier = ifelse(abs(Rollavg - TT_mean) > 6 * sd(Rollavg), TRUE, FALSE)) %>%
-  # filter(Dens <= 125) #4N
-  # filter(Dens <= 150) #1S
-  filter(Dens <= 75) #2S
+train <- dat[train_ind,]
+test <- dat[-train_ind,]
 
-boxplot(Rel_2014$Dens)
+fit <- glm(data = train, TT_mean ~ factor(Month) + factor(WeekDay) + factor(Crash)  + factor(weather2hour) + VMT_total)
+
+p <- predict(fit, test)
+
+pred <- data.frame(x = test$TT_mean, y = p)
+plot(pred$x,pred$y)
+pred$diff <- (pred$x - pred$y)
+
+pred <- arrange(pred,desc(diff))
 ```
 
-``` {r bin data}
 
-# 1N
-# bins <- c(seq(floor(min(Rel_2014$Dens)),30,2),
-#           40,50,ceiling(max(Rel_2014$Dens)))
 
-# 
-bins <- c(seq(floor(min(Rel_2014$Dens)),max(Rel_2014$Dens)+2,2))
+Check the dataset for outliers by plottling all of the travel time obsevations for each segment. 
+
+```{r filter for outlier, echo=FALSE}
+
+ggplot(Rel,aes(x = as.factor(Segment),y = TT_mean)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha = 0.5) +
+  annotate('rect',xmin=8.2,xmax = 9.5,ymin = 35,ymax = 79,alpha = 0.2)+
+  annotate('text',x=7.9,y=57, label = '3 outlier travel times experienced\n during crash incident',hjust = 1)
+
+```
+
+We see three significant outliers in Segment 9. Upon inspection of the dataset, these travel times were observed during a crash incident. 
+
+```{r Seg 9 outliers, include=FALSE}
+
+# Rel %>%
+#   filter(Segment == 9) %>%
+#   arrange(desc(TT_mean)) %>%
+#   print(n=20)
+
+```
+
+
+``` {r bin data, echo=FALSE, messages = FALSE, results = 'asis'}
+
+
+bins <- c(seq(floor(min(Rel$Dens)),50,2),60,70,80,90,100,125,150,200,300,400,480)
+
 
 #1S
 # bins <- c(seq(floor(min(Rel_2014$Dens)),50,2),
 #           60,70,80,100,125,150,round(max(Rel_2014$Dens)+1,0))
 
-Rel_2014$cut <- cut(Rel_2014$Dens,bins,include.lowest = TRUE)
-Rel_2014$Density_bin <- as.numeric(stringi::stri_match_last_regex(Rel_2014$cut,'[0-9]+')) 
+Rel$cut <- cut(Rel$Dens,bins,echo.lowest = TRUE)
+Rel$Density_bin <- as.numeric(stringi::stri_match_last_regex(Rel$cut,'[0-9]+')) 
 
-Rel_2014 %>%
-  group_by(Density_bin,is_Delay) %>%
+d <- Rel %>%
+  group_by(Density_bin, Segment) %>%
   summarise(Count = n()) %>%
   arrange(Density_bin) %>%
-  dcast(Density_bin ~ is_Delay)
+  dcast(Density_bin ~ Segment)
+
+d
 ```
 
 
-### Percentile Bins
+### Percentile Bin and Frre Flow
 
 We will break down the dataset into each delay type and then further into percentiles. 
 
-```{r percentiles, include=FALSE}
+```{r percentiles, echo=FALSE}
 
 # p <- c(.05,.1,0.25,0.5,0.75,0.9,.95)
 
-# 3N 4N 1S 2S
-p <- c(.15,0.25,0.5,0.75,0.85)
+p <- seq(0.05,0.95,0.05)
 ```
 
 
@@ -215,260 +236,566 @@ For each quantile a travel time quantile is calculated. We also want to calculat
 
 ```{r create binned dataset, include=FALSE}
 
-Rel_2014_bin_dt <- Rel_2014 %>%
+Rel_bin <- Rel %>%
   mutate(Density_bin = as.numeric(stringi::stri_match_last_regex(cut,'[0-9]+'))) %>%
-  group_by(is_Delay,Density_bin) %>%
+  group_by(Segment,Delay_type,Density_bin) %>%
   # group_by(Delay_type,Density_bin) %>%
   summarise(quantiles = list(sprintf("%1.0f%%", p*100)),
             TT_quantile = list(quantile(TT_mean,p))) %>%
   unnest() %>%
-  mutate(Speed = Dist1/TT_quantile*60,
+  merge(.,Segments_494, by = 'Segment') %>%
+  mutate(Speed = Length/TT_quantile*60,
          Flow = Speed * Density_bin,
          quantiles = as.factor(quantiles)) %>%
   as.data.frame()
 
-Rel_2014_FF <- Rel_2014_bin_dt %>%
+Rel_FF <- Rel_bin %>%
   # group_by(Delay_type,quantiles) %>%
-  group_by(is_Delay,quantiles) %>%
+  group_by(Segment,Delay_type,quantiles) %>%
   summarise(FF_quantile = round(quantile(Flow/Density_bin,.95, na.rm = TRUE),0))
 
 
-Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,Rel_2014_FF) %>%
-  mutate(Index_bin = as.integer((seq(1,length(FF_quantile),1))),
-         TTI = TT_quantile/(Dist1/FF_quantile * 60))
+Rel_bin <- merge(Rel_bin,Rel_FF) %>%
+  mutate(Index_bin = as.integer((seq(1,length(FF_quantile),1))))
 
-head(Rel_2014_bin_dt)
+# Rel_bin$quantiles <- factor(Rel_bin$quantiles,levels(Rel_bin$quantiles)[c(5,1:4,6:11)])
+                            
+head(Rel_bin)
 ```
 
 The Free Flow speeds were calcuated using the 95th percentile speeds. 
 
-```{r free flow plot, fig.width = 11}
+```{r join FF to large dataset}
+
+table(duplicated(Rel_bin[,1:5]))
+
+Rel_q <- Rel %>% 
+  select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
+  data.table()
+
+TT_q <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
+setkey(TT_q, NULL)
+setkey(TT_q, Segment, Delay_type, Density_bin, TT_q)
+
+join_TT <- TT_q[Rel_q, roll = 'nearest', .(TT_quantile = x.TT_q,
+                                           TT_mean = i.TT_q,
+                                           FF_quantile = FF_quantile,
+                                           Quantiles = quantiles,
+                                           Index = Index)]
+head(join_TT)
+join_TT <- join_TT[!duplicated(join_TT$Index),]
+
+Rel <- merge(Rel, join_TT[, c('Index', 'TT_quantile', 'FF_quantile', 'Quantiles')], by = 'Index')
+
+rm(Rel_q, TT_q)
+```
+
+
+
+## MAP
+
+
+```{r map, echo=FALSE, fig.height=2}
+
+
+m <- leaflet() %>%
+  addTiles() %>%
+  addLabelOnlyMarkers(lng = subset(Seg, Segment_Location == 'START')$LONG,
+                      lat = subset(Seg, Segment_Location == 'START')$LAT, 
+                      label = paste(as.character(subset(Seg, Segment_Location == 'START')$Segment_No),
+                                    substring(subset(Seg, Segment_Location == 'START')$Segment_Location,1,1)),
+                      labelOptions = labelOptions(noHide = T, direction = 'top')) %>%
+    addLabelOnlyMarkers(lng = subset(Seg, Segment_Location == 'END')$LONG,
+                      lat = subset(Seg, Segment_Location == 'END')$LAT, 
+                      label = paste(as.character(subset(Seg, Segment_Location == 'END')$Segment_No),
+                                    substring(subset(Seg, Segment_Location == 'END')$Segment_Location,1,1)),
+                      labelOptions = labelOptions(noHide = T, direction = 'bottom')) 
+
+m
+```
+
+## FREE FLOW PLOTS {.tabset .tabset-fade}
+
+### Segment 1
+
+```{r free flow plot seg1, fig.width = 11,echo = FALSE, message = FALSE}
+
 ff <- ggplot()+
-  geom_point(data = data.frame(Rel_2014_bin_dt),aes(x=Density_bin,y=Flow, color=quantiles))+
-  geom_abline(data = data.frame(Rel_2014_FF), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
-  # facet_grid(~Delay_type)
-  facet_grid(~is_Delay)
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 1,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 1,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 2
+
+```{r free flow plot seg 2, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 2,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 2,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 3
+
+```{r free flow plot seg 3, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 3,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 3
+                                       ,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 4
+
+```{r free flow plot seg 4, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 4,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 4,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 5
+
+```{r free flow plot seg 5, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 5,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 5,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
 ggplotly(ff)
 ```
 
 
+### Segment 6
+
+```{r free flow plot seg 6, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 6,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 6,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 7
+
+```{r free flow plot seg 7, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 7,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 7,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+### Segment 8
+
+```{r free flow plot seg 8, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 8,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 8,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+
+```
+
+### Segment 9
+
+```{r free flow plot seg 9, fig.width = 11,echo = FALSE, message = FALSE}
+
+ff <- ggplot()+
+  geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == 9,]),aes(x=Density_bin,y=Flow, color=quantiles))+
+  geom_abline(data = data.frame(Rel_FF[Rel_FF$Segment == 9,]), aes(slope = FF_quantile, intercept = 0, linetype = 'dashed', color = quantiles))+
+  facet_grid(~ Delay_type, scales = 'free')
+ggplotly(ff)
+```
+
+## DENSITY vs TT {.tabset .tabset-fade}
+
 A look at the Density vs travel time plots. A generic smooting function has been added. 
 
-```{r Density vs TT, fig.width = 11}
+### Segment 1
+
+```{r Density vs TT seg1, fig.width = 11, echo = FALSE, message = FALSE}
+
 tt <- ggplot()+
-  geom_point(data=Rel_2014_bin_dt,aes(x= Density_bin,y = TT_quantile, color= quantiles))+
-  geom_smooth(data=Rel_2014_bin_dt,aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
-  # facet_grid(~Delay_type)
-  facet_grid(~is_Delay)
+  geom_point(data=Rel_bin[Rel_bin$Segment == 1,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 1,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
 ggplotly(tt)
 ```
 
+### Segment 2
 
+```{r Density vs TT seg 2, fig.width = 11,echo = FALSE, message = FALSE}
 
-We need to find the congestion point for each Delay type and percentile.
-
-```{r find congestion points freeway, include=FALSE}
-
-# model_crash <- Rel_2014_bin_dt %>%
-#   filter(Delay_type == 'Crash') %>%
-#   nest(-Delay_type,-quantiles) %>%
-#   # as.tibble() %>%
-#   mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 0.75, data = .,)),
-#          results = map(fit, augment)) %>%
-#   as.tibble() %>%
-#   unnest(results)
-# 
-# model <- Rel_2014_bin_dt %>%
-#   filter(Delay_type != 'Crash') %>%
-#   nest(-Delay_type,-quantiles) %>%
-#   # as.tibble() %>%
-#   mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 1, data = .,)),
-#          results = map(fit, augment)) %>%
-#   as.tibble() %>%
-#   unnest(results) %>%
-#   rbind(model_crash)
-
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 2,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 2,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-```{r model for signal road}
-# model_non_delay <- Rel_2014_bin_dt %>%
-#   filter(Delay_type != 'None') %>%
-#   nest(-Delay_type,-quantiles) %>%
-#   # as.tibble() %>%
-#   mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 0.75, data = .,)),
-#          results = map(fit, augment)) %>% 
-#   as.tibble() %>%
-#   unnest(results)
+### Segment 3
 
-model <- Rel_2014_bin_dt %>%
-  # filter(Delay_type == 'None') %>%
-  nest(-is_Delay,-quantiles) %>%
-  # as.tibble() %>%
-  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 1, data = .,)),
-         results = map(fit, augment)) %>% 
-  as.tibble() %>%
-  unnest(results)
+```{r Density vs TT seg 3, fig.width = 11,echo = FALSE, message = FALSE}
 
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 3,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 3,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-```{r model-max original}
+### Segment 4
 
-model_max <- model %>%
-  group_by(is_Delay,quantiles) %>%
-  # group_by(Delay_type,quantiles) %>%
-  # summarise(max = max(.fitted))
-  filter(.fitted == max(.fitted)) %>%
-  select(is_Delay, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
-  # select(Delay_type, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
+```{r Density vs TT seg 4, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 4,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 4,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
+### Segment 5
 
-```{r 4N edits}
-# # #4N EDITS
+```{r Density vs TT seg 5, fig.width = 11,echo = FALSE, message = FALSE}
 
-# model_max <- data.frame(is_Delay = c(rep('Delay',5),rep('No_Delay',5)),
-#                         quantiles = rep(c('15%','25%','50%',"75%",'85%'),2),
-#                         Cong_Flow = c(1450,1360,1330,1290,1275,
-#                                       1435,1430,1410,1370,1350),
-#                         Cong_Density = c(34,34,44,44,44,
-#                                          36,40,50,58,58))
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 5,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 5,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-```{r 3N edits}
+### Segment 6
 
+```{r Density vs TT seg6, fig.width = 11,echo = FALSE, message = FALSE}
 
-# model_max <- data.frame(is_Delay = c(rep('Delay',5),rep('No_Delay',5)),
-#                         quantiles = rep(c('15%','25%','50%',"75%",'85%'),2),
-#                         Cong_Flow = c(1380,1340,1280,1250,1192,
-#                                       1360,1355,1310,1200,1230),
-#                         Cong_Density = c(52,42,44,50,42,
-#                                          34,40,38,40,50))
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 6,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 6,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-```{r 2s edits}
+### Segment 7
 
-model_max <- data.frame(is_Delay = c(rep('Delay',5),rep('No_Delay',5)),
-                        quantiles = rep(c('15%','25%','50%',"75%",'85%'),2),
-                        Cong_Flow = c(1460,1460,1460,1330,1305,
-                                      1479,1450,1360,1130,780),
-                        Cong_Density = c(32,32,32,40,40,
-                                         32,34,34,32,30))
+```{r Density vs TT seg  7, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 7,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 7,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-```{r 1S edits}
-#1S EDITS
+### Segment 8
 
+```{r Density vs TT seg 8, fig.width = 11,echo = FALSE, message = FALSE}
 
-# model_max <- data.frame(is_Delay = c(rep('Delay',5),rep('No_Delay',5)),
-#                         quantiles = rep(c('15%','25%','50%',"75%",'85%'),2),
-#                         Cong_Flow = c(2300,2200,2100,1990,1940,
-#                                       2270,2230,2113,2070,2020),
-#                         Cong_Density = c(76,62,62,62,62,
-#                                          68,72,72,90,90))
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 8,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 8,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
 ```
 
-### Plots
+### Segment 9
+
+```{r Density vs TT seg9, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot()+
+  geom_point(data=Rel_bin[Rel_bin$Segment == 9,],aes(x= Density_bin,y = TT_quantile, color= quantiles))+
+  geom_smooth(data=Rel_bin[Rel_bin$Segment == 9,],aes(x= Density_bin,y = TT_quantile, color= quantiles),span=1,se=F)+
+  facet_grid(~Delay_type, scales = 'free')
+  
+ggplotly(tt)
+```
+
+## DENSITY vs FLOW {.tabset .tabset-fade}
 
 Below are the Flow vs Density plots for each condition. 
 
 Verical lines show the congestion Density for each condition. 
 
-```{r plots weather delay,  fig.width = 10, fig.height=5}
+### Segment 1
 
-f <- ggplot()+
-  geom_point(data=filter(Rel_2014_bin_dt,Delay_type == 'Weather') ,
-             aes(x= Density_bin,y = Flow, color= quantiles))+
-  geom_smooth(data=filter(Rel_2014_bin_dt,Delay_type == 'Weather'),
-              aes(x= Density_bin,y = Flow, color= quantiles),span =1,se=F)+
-  geom_vline(data=filter(model_max,Delay_type == 'Weather'),aes(xintercept=Cong_Density, color = quantiles)) +
-  ggtitle('Delay Type = "Weather"')
-ggplotly(f)
 
+```{r Density vs Flow seg1, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel[Rel$Segment == 1,],aes(x= Dens,y = Hourly_Flow, color= Quantiles, label = DateTime))+
+  geom_point()+
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
+  scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
+  ggtitle('Segment 1')
+  
+ggplotly(tt)
 ```
 
-```{r plots crash delay,  fig.width = 10, fig.height=5}
+```{r Density vs Flow bin seg1, fig.width = 11,echo = FALSE, message = FALSE}
 
-
-
-f <- ggplot()+
-  geom_point(data=filter(Rel_2014_bin_dt,Delay_type == 'Crash') ,
-             aes(x= Density_bin,y = Flow, color= quantiles))+
-  geom_smooth(data=filter(Rel_2014_bin_dt,Delay_type == 'Crash'),
-              aes(x= Density_bin,y = Flow, color= quantiles),span =0.75,se=F)+
-  geom_vline(data=filter(model_max,Delay_type == 'Crash'),aes(xintercept=Cong_Density, color = quantiles)) +
-  ggtitle('Delay Type = "Crash"')
-ggplotly(f)
-
-```
-
-```{r plots no delay, fig.width = 10, fig.height=5}
-
-dat <- filter(Rel_2014_bin_dt,
-              is_Delay == 'No_Delay')
-
-f <- ggplot()+
-  geom_point(data=dat,
-             aes(x= Density_bin,y = Flow, color= quantiles))+
-  geom_smooth(data=dat,
-              aes(x= Density_bin,y = Flow, color = quantiles),span =1,se=F)+
-  geom_vline(data=filter(model_max,is_Delay == 'No_Delay'),aes(xintercept=Cong_Density, color = quantiles)) +
-  # geom_vline(data=filter(model_max,Delay_type != 'None'),aes(xintercept=Cong_Density, color = quantiles)) +
-  ggtitle('Delay Type = "None"')
-ggplotly(f)
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 1,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  scale_y_continuous(minor_breaks = seq(0, 4000,100), breaks = seq(0,4000,200))+
+  ggtitle('Segment 1')
+  
+ggplotly(tt)
 ```
 
 
-### Demand
 
-We now calcualte Demand.
+### Segment 2
 
-If Density is less than the congestion density, Demand = Flow.
-If density is greated that the congestion density, Demand = 2 x Congestion Flow - Flow. 
-
-TTI is the travel time divided by the travel time at Free Flow. 
+```{r Density vs Flow seg2, fig.width = 11,echo = FALSE, message = FALSE}
 
 
+tt <- ggplot(data=Rel[Rel$Segment == 2,],aes(x= Dens,y = Hourly_Flow, color= Quantiles, label = DateTime))+
+  geom_point()+
+  facet_grid(~Delay_type, scales = 'free')+
+  scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
+  scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
+  ggtitle('Segment 2')
+  
+ggplotly(tt)
+```
 
+```{r Density vs Flow binned data seg2, fig.width = 11,echo = FALSE, message = FALSE}
 
-```{r calculate demand}
-Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('is_Delay','quantiles')) %>%
-# Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,model_max,by = c('Delay_type','quantiles')) %>%
-  mutate(Demand = ifelse(Density_bin <= Cong_Density, Flow,
-                         ifelse(Density_bin >= Cong_Density & Flow <= Cong_Flow,Cong_Flow + (Cong_Flow - Flow),Flow)),
-         DC = Demand/Cong_Flow) 
-    #4N 
-  # filter(Demand <=2000)
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 2,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
+  scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
+  ggtitle('Segment 2')
+  
+ggplotly(tt)
 
 ```
 
-```{r demand vs TTI,  fig.width = 10, fig.height=5}
+### Segment 3
 
-s <- ggplot()+
-  # geom_smooth(data=Rel_2014_bin_dt,aes(x= Flow,y = TT_quantile, color= quantiles),se=F,span = 1)+
-  geom_point(data=Rel_2014_bin_dt,aes(x= Demand,y = Density_bin, color= quantiles)) +
-  facet_grid(~is_Delay)
-ggplotly(s)
+```{r Density vs Flow seg3, fig.width = 11,echo = FALSE, message = FALSE}
 
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 3,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 3')
+  
+ggplotly(tt)
+```
+
+### Segment 4
+
+```{r Density vs Flow seg4, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 4,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 4')
+  
+ggplotly(tt)
+```
+
+### Segment 5
+
+```{r Density vs Flow seg5, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 5,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 5')
+  
+ggplotly(tt)
+```
+
+### Segment 6
+
+```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 6,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 6')
+  
+ggplotly(tt)
+```
+
+### Segment 7
+
+```{r Density vs Flow seg7, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 7,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 7')
+  
+ggplotly(tt)
+```
+
+### Segment 8
+
+```{r Density vs Flow seg8, fig.width = 11,echo = FALSE, message = FALSE}
+
+tt <- ggplot(data=Rel[Rel$Segment == 8,],aes(x= Dens,y = Hourly_Flow, color= Quantiles))+
+  geom_point()+
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 8')
+  
+ggplotly(tt)
 
 ```
 
+```{r Density vs Flow seg8, fig.width = 11,echo = FALSE, message = FALSE}
 
-## Future Model
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 8,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 8')
+  
+ggplotly(tt)
 
-We now fit a curve to model the demand. 
+```
 
-On the x axis we plot Demand/Congestion Flow and on the Y axis we plot TTI.
+### Segment 9
 
-The formula we use to model the data is 1 + aplha x D/C ^ beta. A set initial portion of each curve is set to TTI = 1, to correctly model Demand = Flow for now congestion conditions. 
+```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
 
-Below is the model output for no delay conditions, 50th percentile:
+tt <- ggplot(data=Rel[Rel$Segment == 9,],aes(x= Dens,y = Hourly_Flow, color= Quantiles))+
+  geom_point()+
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 9')
+  
+ggplotly(tt)
+```
 
-```{r develop model}
-sample_data <- Rel_2014_bin_dt %>%
-  filter(is_Delay == 'No_Delay',
-         quantiles == '85%') %>%
-  select(DC, TTI)
+```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
 
+tt <- ggplot(data=Rel_bin[Rel_bin$Segment == 9,],aes(x= Density_bin,y = Flow, color= quantiles))+
+  geom_point()+
+  geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  ggtitle('Segment 9')
+  
+ggplotly(tt)
+```
+
+
+## MODELMAX
+
+We need to find the congestion point for each Delay type and percentile.
+l
+### SEGMENT 
+
+
+```{r find congestion points freeway, echo=FALSE}
+
+model_crash <- Rel_bin[Rel_bin$Segment ==1,] %>%
+  filter(Delay_type == 'Crash') %>%
+  nest(-Delay_type,-quantiles) %>%
+  # as.tibble() %>%
+  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 0.75, data = .,)),
+         results = map(fit, augment)) %>%
+  as.tibble() %>%
+  unnest(results)
+
+model_none <- Rel_bin[Rel_bin$Segment ==1,]  %>%
+  filter(Delay_type == 'None') %>%
+  nest(-Delay_type,-quantiles) %>%
+  # as.tibble() %>%
+  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 1, data = .,)),
+         results = map(fit, augment)) %>%
+  as.tibble() %>%
+  unnest(results) %>%
+  rbind(model_crash)
+
+model_weather <- Rel_bin[Rel_bin$Segment ==1,]  %>%
+  filter(Delay_type != 'Weather') %>%
+  nest(-Delay_type,-quantiles) %>%
+  # as.tibble() %>%
+  mutate(fit = map(data, ~ loess(Flow ~ Density_bin, span = 1, data = .,)),
+         results = map(fit, augment)) %>%
+  as.tibble() %>%
+  unnest(results) %>%
+  rbind(model_crash)
+
+```
+
+```{r model max original}
+
+# model_max <- model %>%
+#   group_by(is_Delay,quantiles) %>%
+#   # group_by(Delay_type,quantiles) %>%
+#   # summarise(max = max(.fitted))
+#   filter(.fitted == max(.fitted)) %>%
+#   select(is_Delay, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
+#   # select(Delay_type, quantiles, Cong_Flow = .fitted, Cong_Density = Density_bin)
+```
+
+```{r R^2}
+
+some_data <- Rel_bin %>%
+  filter(Segment == 2, Delay_type == 'None', quantiles == '75%') %>%
+  select(Density_bin, TT_quantile, Speed, Flow)  %>%
+  arrange( Density_bin) %>%
+  mutate(Index = seq(1:length(Flow)))
+
+df <- list()
+for (i in 1:length(some_data$Density_bin)){
+  mod <- lm(data = some_data[1:i,],Flow ~ Density_bin)
+  df[i] <- (summary(mod)$adj.r.squared)
+}
+df <- unlist(df)
+
+some_data$R_sq <- df
+
+g <- ggplot(some_data,aes(x= Density_bin, y = Flow, color = R_sq, text = R_sq)) +
+  geom_point() +
+  geom_smooth(span=0.75,se=F) 
+ggplotly(g, tooltip = 'text')
+  
+```
+
+```{r develop model, message = FALSE}
+sample_data <- Rel %>%
+  filter(Delay_type == 'None',
+         Quantiles == '55%',
+         Segment == 2) %>%
+  select(Dens, Hourly_Flow)
+print(plot(sample_data))
+```
+
+```{r custom formula}
 
 formulaExp <- as.formula(TTI ~(DC <= .65) + (DC > .65) * ( mu * (DC ^ b)))
 b <- 3
@@ -484,315 +811,125 @@ predict(sample_nls,pred)
 ```
 
 
-```{r develop breaks for model, include=FALSE}
 
-# 1N
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(0.87,0.88,0.87,0.89,0.91,0.91,.845,
-#                 0.94,.94,0.95,0.96,0.99,0.99,0.99,
-#                 0.99,0.99,0.99,0.98,0.96,0.96,0.95)) %>%
-#   select(Delay_type,quantiles,br)
+## HEATMAP {.tabset .tabset-fade}
 
-# 2N
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(0.86,0.86,0.87,0.865,0.865,0.865,0.865,
-#                 0.88,0.895,0.895,0.895,0.95,1.04,1.03,
-#                 0.91,0.9,0.91,0.91,.89,0.86,0.79)) %>%
-#   select(Delay_type,quantiles,br)
+```{r heatmap,include = FALSE, message = FALSE}
 
-# 3S
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(0.92,0.91,0.91,0.92,0.87,0.85,0.92,
-#                 0.87,0.9,0.86,0.9,0.9,0.91,0.9,
-#                 0.5,0.48,0.5,0.48,0.53,0.49,0.48)) %>%
-#   select(Delay_type,quantiles,br)
-
-# 4S
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(0.96,0.94,0.955,0.9,0.9,0.98,0.99,
-#                 0.9999,0.999,1,0.94,0.89,0.89,0.83,
-#                 0.55,0.55,0.58,0.5,0.43,0.6,0.6)) %>%
-#   select(Delay_type,quantiles,br)
-
-# 3N
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(.65,.65,.6,.4,.4,
-#                 .8,.8,.8,.66,.37)) %>%
-#   select(is_Delay,quantiles,br)
-
-# 4N
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(.85,.74,.6,.33,.23,
-#                 .9,.9,.87,.87,.3)) %>%
-#   select(is_Delay,quantiles,br)
-
-# 1S
-# breaks <- model_max %>% data.frame() %>%
-#   mutate(br = c(.7,.65,.48,.4,.25,
-#                 .92,.88,.5,.3,.3)) %>%
-#   select(is_Delay,quantiles,br)
-
-# 2S
-breaks <- model_max %>% data.frame() %>%
-  mutate(br = c(.84,.85,.83,.75,.82,
-                .92,.85,.75,.56,.65)) %>%
-  select(is_Delay,quantiles,br)
-
-Rel_2014_bin_dt <- merge(Rel_2014_bin_dt,breaks)
-```
-
-```{r Demand model test, include=FALSE}
-
-func_exp <- function(x) {
-  nls(
-    TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)),
-    start = list(mu = 1.5, b = 3),
-    data = x)
-}
+TT_heat <-function(data,seg){ 
+  heat <- data %>%
+  filter(Segment == seg) %>% 
+  select(DateTime, TT_mean, Length) %>% 
+  mutate(HourMin = format(DateTime, '%H:%M'),
+         YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
+         TTI = TT_mean/(Length/60 * 60),
+         TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
+                                 ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
+                                        ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
+                                               ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
+                                                      ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
+                                                             ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
+                                                                    ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
+                                                                           ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
+                                                                                  ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
+                          levels = (c('>4.0 TTI',
+                                      '3.5 TTI - 4.0 TTI',
+                                      '3.0 TTI - 3.5 TTI',
+                                      '2.5 TTI - 3.0 TTI',
+                                      '2.0 TTI - 2.5 TTI',
+                                      '1.5 TTI - 2.0 TTI',
+                                      '45 mph TT - 1.5 TTI',
+                                      'Speed Limit TT - 45 mph TT',
+                                      '<Speed Limit TT')))) 
 
 
-formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
-
-model_nls <- Rel_2014_bin_dt %>%
-  # nest(-Delay_type,-quantiles) %>%
-  nest(-is_Delay,-quantiles) %>%
-  mutate(fit = purrr::map(data, func_exp)) 
-  # mutate(pred = purrr::map2(fit,data,predict)) %>%
-  # unnest(data,pred)
-
-```
-
-### Predict
-
-We join each model back to the original dataset and create a predicted TTI for each row. 
-
-```{r join roll up, include=FALSE}
-
-Rel_2014_TT_dt <- Rel_2014 %>%
-  select(is_Delay,Density_bin,TT_quantile = TT_mean, Index) %>%
-  # select(Delay_type,Density_bin,TT_quantile = TT_mean, Index) %>%
-  data.table()
-
-
-Rel_2014_bin_dt <- data.table(Rel_2014_bin_dt) %>% select(-quantiles,quantiles)
-setkey(Rel_2014_bin_dt, NULL)
-# setkey(Rel_2014_bin_dt,Delay_type,TT_quantile,Density_bin)
-setkey(Rel_2014_bin_dt,is_Delay,Density_bin)
-Rel_2014_bin_dt <-  Rel_2014_bin_dt[!duplicated(Rel_2014_bin_dt[,1:4]),]
-
-setkey(Rel_2014_bin_dt, NULL)
-# setkey(Rel_2014_bin_dt,Delay_type,TT_quantile,Density_bin)
-setkey(Rel_2014_bin_dt,is_Delay,Density_bin,TT_quantile)
-
-join_TT <- Rel_2014_bin_dt[Rel_2014_TT_dt, roll = 'nearest', .(TT_q = x.TT_quantile,
-                                                 TT_mean = i.TT_quantile,
-                                                 Density_bin = Density_bin,
-                                                 is_Delay = is_Delay,
-                                                 # Delay_type = Delay_type,
-                                                 Quantiles = quantiles,
-                                                 FF = FF_quantile,
-                                                 Cong_Flow = Cong_Flow,
-                                                 Cong_Density = Cong_Density,
-                                                 Index = Index,
-                                                 br = br)]
-
-# join_TT <- Rel_2014_bin_dt[Rel_2014_TT_dt, roll = 'nearest']
-
-join_TT <- join_TT[!duplicated(join_TT$Index),]
-
-
-Rel_2014_f <- merge(Rel_2014, join_TT[,c('Index','TT_q','Quantiles','Cong_Flow','Cong_Density','FF','br')], by = 'Index', all.x=TRUE)
-table(is.na(Rel_2014_f$Cong_Flow))
-
-Rel_2014_f <- Rel_2014_f %>%
-  mutate(Demand  = ifelse(Density_bin <= Cong_Density,Hourly_Flow,2*Cong_Flow - Hourly_Flow),
-         DC = Demand/Cong_Flow,
-         TTI = TT_mean/(Dist1/FF * 60)) %>%
-  # nest(-Delay_type, -Quantiles)
-  nest(-is_Delay, -Quantiles)
-
-# Rel_2014_f <- merge(Rel_2014_f,model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
-Rel_2014_f <- merge(Rel_2014_f,model_nls %>% select(is_Delay, Quantiles = quantiles, fit)) %>%
-  as.tibble() %>%
-  mutate(pred = map2(fit,data,predict)) %>%
-  as.tibble() %>%
-  unnest(data,pred)
-```
-
-```{r testing}
-x <- data.table(
-  # Col1 = c('a','b','c','d','e','f'),
-  Col2 = c(1000,30,40)
-  # ,
-  # Col3 = c(12,10,8,6,4,2)
-  )
-
-y <- data.table(
-  # Col1 = c('a','b','c','d','e','f','g'),
-  Col2 = c(3,13,20,4,6,20,50)
-  )
-
-setkey(x,NULL)
-setkey(x,Col2)
-
-x[y, roll= Inf]
-
-
-DT1 <- data.table(x = 10,8,7,6,4)
-DT2 <- data.table(y = c(2,4,1,3,5) + 0.01)
-setkey(DT1, x)
-setkey(DT2, y)
-DT1[DT2, roll = 'nearest']
-
-dt <- data.table(aa= c(20,12,55), bb= c(4,2,10), cc= c(5,1,7))
-setkey(dt,NULL)
-setkey(dt, aa)
-ds <- data.table(dd = c(100,50,1,27,40), ee= c('a','b','c','d','e'))
-da <- dt[ds,  roll = "nearest", ]
-
-
-d <- Rel_2014_bin_dt[c(1,74,400,432),]
-f <- Rel_2014_TT_dt[1:10,]
-setkey(d,is_Delay,Density_bin)
-g <- d[f,roll='nearest']
-
-
-dup <- Rel_2014_bin_dt[1:20,1:4]
-setkey(dup,is_Delay,Density_bin,TT_quantile)
-dup$dupo <- duplicated(dup)
-```
-
-
-
-```{r plot pred vs TTI, fig.width = 10, fig.height=5}
-
-pr <- ggplot(Rel_2014_f, aes(x=TTI,y=pred, color=Quantiles))+
-  geom_point()+
-  scale_x_continuous(breaks = c(1,2,3,4,5))+
-  scale_y_continuous(breaks = c(1,2,3,4,5,6))+
-  # facet_grid(~Delay_type)
-  facet_grid(~is_Delay)
-ggplotly(pr)
-
-```
-
-
-```{r model future demand}
-Rel_2014_p <- Rel_2014_f %>%
-  mutate(F_Dem = Demand * Future,
-         DC    = F_Dem/Cong_Flow) %>%
-  # nest(-Delay_type,-Quantiles) %>%
-  nest(-is_Delay,-Quantiles) %>%
-  # merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
-  merge(model_nls %>% select(is_Delay, Quantiles = quantiles, fit)) %>%
-  as.tibble() %>%
-  mutate(pred = map2(fit,data,predict)) %>%
-  as.tibble() %>%
-  unnest(data,pred) %>%
-  mutate(TT = pred * (Dist1/FF * 60)) %>%
-  select(DateTime, DateTimeSec, TT) 
-  # mutate(DateTime = as.character(DateTime))
   
-```
-
-```{r dat sequence}
-seq_15min_2015 <- data.frame(DateTime=seq(as.POSIXct("2015,01,01",format="%Y,%m,%d"),
-                                          as.POSIXct("2016,01,01",format="%Y,%m,%d"),by="15 min"))
-seq_15min_2015 <- seq_15min_2015[-1,] %>% data.frame(DateTime = .)
-
-Rel_2014_p <- merge(seq_15min_2015, Rel_2014_p, all.x = TRUE)
-Rel_2014_f <- merge(seq_15min_2015, Rel_2014_f, all.x = TRUE)
-
-write.csv(Rel_2014_f,'2_S_exist_pred.csv',row.names = FALSE)
-write.csv(Rel_2014_p,'2_S_predict.csv',row.names = FALSE)
-getwd()
-```
-
-```{r heatmap}
- TT_heat <- Rel_2014 %>% 
-   select(DateTime, TT_mean, YearDay) %>% 
-   mutate(HourMin = format(DateTime, '%H:%M'),
-          YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
-          TTI = TT_mean/(Dist1/60 * 60),
-          TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
-                     ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
-                     ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
-                     ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
-                     ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
-                     ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
-                     ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
-                     ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
-                     ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
-                     levels = (c('>4.0 TTI',
-                                 '3.5 TTI - 4.0 TTI',
-                                 '3.0 TTI - 3.5 TTI',
-                                 '2.5 TTI - 3.0 TTI',
-                                 '2.0 TTI - 2.5 TTI',
-                                 '1.5 TTI - 2.0 TTI',
-                                 '45 mph TT - 1.5 TTI',
-                                 'Speed Limit TT - 45 mph TT',
-                                 '<Speed Limit TT')))) 
-
 library(RColorBrewer)
 myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
-names(myColors) <- levels(TT_heat$TTI_Cat)
+names(myColors) <- levels(heat$TTI_Cat)
 colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors)
 fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors)
 break_axis <- c('06:00','09:00','12:00','15:00','18:00','21:00')
 
- g <- ggplot(TT_heat) +
-   geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
-   theme_tufte(base_size = 15) +
-   scale_y_discrete(breaks = break_axis) +
-   colScale + fillScale
- g
-```
-
-```{r thermometer}
-quants <- seq(.025,.975,.05)
-
-therm <- TT_heat %>%
-  summarise(quantiles = list(sprintf("%1.1f%%", quants*100)),
-            TT_quantile = list(quantile(TT_mean,quants))) %>%
-  unnest() %>%
-  select(quantiles, TTI = TT_quantile)
-
-therm_table <- flextable(therm)
-# theme_vanilla(therm_table)
-
-therm_table <- bg(therm_table, i = ~ TTI  > 4, j =  ~ TTI, bg = myColors[[1]])
-therm_table <- bg(therm_table, i = ~ TTI <= 4.0 & TTI > 3.5,j =  ~ TTI, bg = myColors[[2]])
-therm_table <- bg(therm_table, i = ~ TTI <= 3.5 & TTI > 3.0,j =  ~ TTI, bg = myColors[[3]])
-therm_table <- bg(therm_table, i = ~ TTI <= 3.0 & TTI > 2.5,j =  ~ TTI, bg = myColors[[4]])
-therm_table <- bg(therm_table, i = ~ TTI <= 2.5 & TTI > 2.0,j =  ~ TTI, bg = myColors[[5]])
-therm_table <- bg(therm_table, i = ~ TTI <= 2.0 & TTI > 1.5,j =  ~ TTI, bg = myColors[[6]])
-therm_table <- bg(therm_table, i = ~ TTI <= 1.5 & TTI > 1.25,j =  ~ TTI, bg = myColors[[7]])
-therm_table <- bg(therm_table, i = ~ TTI <= 1.25 & TTI > 1.0,j =  ~ TTI, bg = myColors[[8]])
-therm_table <- bg(therm_table, i = ~ TTI <= 1.0 ,j =  ~ TTI, bg = myColors[[9]])
-therm_table
-
-# read_docx() %>% 
-#   # body_add_flextable(therm_table) %>% 
-#   body_add_img(therm_table) %>% 
-#   print(target = "flextable.docx")
-
-
-```
-
-```{r thermometer image}
-insert_screenshot = function(x, png_file ) {
-  htmltools::save_html(htmltools_value(x), 'temp.html')
-  res = webshot::webshot('temp.html', png_file, vwidth = 250, vheight = 440)
-  unlink('temp.html')
-  res
+g <- ggplot(heat) +
+  geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
+  theme_tufte(base_size = 15) +
+  scale_y_discrete(breaks = break_axis) +
+  colScale + fillScale +
+  ggtitle(paste('Segment', seg, 'Free Flow:'))
+return(g)
 }
-insert_screenshot(therm_table, 'Thermometer.png')
+```
+
+### SEGMENT 1
+
+```{r heatmap seg1, fig.width=12}
+
+TT_heat(Rel,1)
+
+```
+
+### SEGMENT 2
+
+```{r heatmap seg2, fig.width=12}
+
+TT_heat(Rel,2)
+
 ```
 
 
-![Caption for the picture.](Thermometer.png)
+### SEGMENT 3
 
+```{r heatmap seg3, fig.width=12}
 
+TT_heat(Rel,3)
 
+```
 
+### SEGMENT 4
 
+```{r heatmap seg4, fig.width=12}
+
+TT_heat(Rel,4)
+
+```
+
+### SEGMENT 5
+
+```{r heatmap seg5, fig.width=12}
+
+TT_heat(Rel,5)
+
+```
+
+### SEGMENT 6
+
+```{r heatmap seg6, fig.width=12}
+
+TT_heat(Rel,6)
+
+```
+
+### SEGMENT 7
+
+```{r heatmap seg7, fig.width=12}
+
+TT_heat(Rel,7)
+
+```
+
+### SEGMENT 8
+
+```{r heatmap seg8, fig.width=12}
+
+TT_heat(Rel,8)
+
+```
+
+### SEGMENT 9
+
+```{r heatmap seg9, fig.width=12}
+
+TT_heat(Rel,9)
+
+```
