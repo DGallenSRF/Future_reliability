@@ -523,6 +523,12 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
 }
 ```
 
+```{r}
+Rel_bin_preFilter <- Rel_bin
+# Rel_bin <- Rel_bin_preFilter
+```
+
+
 
 ### Segment 1
 
@@ -531,63 +537,128 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
 dens_flow_plot(1,'', bin = TRUE)
 ```
 
+```{r filter segment 1}
+
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
+  filter(!(Segment == 1 & Delay_type == 'Crash' & Density_bin > 100))
+
+```
+
+
 ### Segment 2
 
 ```{r Density vs Flow seg2, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(2,'none', bin = NA)
+dens_flow_plot(2,'none', bin = TRUE)
 ```
 
+```{r filter segment 2}
+
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 2 & Delay_type == 'Weather' & Density_bin > 101)) %>%
+  filter(!(Segment == 2 & Delay_type == 'Crash' & Density_bin > 125))
+
+```
 
 
 ### Segment 3
 
 ```{r Density vs Flow seg3, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(3,'none', bin = NA)
+dens_flow_plot(3,'none', bin = TRUE)
+```
+
+```{r filter segment 2}
+
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 3 & Delay_type == 'Weather' & Density_bin > 99)) %>%
+  filter(!(Segment == 3 & Delay_type == 'Crash' & Density_bin > 151)) %>%
+  filter(!(Segment == 3 & Delay_type == 'None' & Density_bin > 151))
+
 ```
 
 ### Segment 4
 
 ```{r Density vs Flow seg4, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(4,'none', bin = NA)
+dens_flow_plot(4,'none', bin = TRUE)
+```
+
+```{r filter segment 4}
+
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 4 & Delay_type == 'Weather' & Density_bin == 50)) %>%
+  filter(!(Segment == 4 & Delay_type == 'Weather' & Density_bin > 60)) %>%
+  filter(!(Segment == 4 & Delay_type == 'Crash' & Density_bin == 50)) %>%
+  filter(!(Segment == 4 & Delay_type == 'None' & Density_bin > 101))
+
 ```
 
 ### Segment 5
 
 ```{r Density vs Flow seg5, fig.width = 11,echo = FALSE, message = FALSE}
-dens_flow_plot(5,'none', bin = NA)
+dens_flow_plot(5,'none', bin = TRUE)
+```
+
+```{r filter segment 5}
+
+
 ```
 
 ### Segment 6
 
 ```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(6,'none', bin = NA)
+dens_flow_plot(6,'none', bin = TRUE)
+```
+
+```{r filter segment 6}
+
 ```
 
 ### Segment 7
 
 ```{r Density vs Flow seg7, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(7,'none', bin = NA)
+dens_flow_plot(7,'none', bin = TRUE)
+```
+
+```{r filter segment 7}
+
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 7 & Delay_type == 'Weather' & Density_bin > 51)) %>%
+  filter(!(Segment == 7 & Delay_type == 'Crash' & Density_bin > 51)) %>%
+  filter(!(Segment == 7 & Delay_type == 'None' & Density_bin > 51))
+
 ```
 
 ### Segment 8
 
 ```{r Density vs Flow seg8, fig.width = 11,echo = FALSE, message = FALSE}
-dens_flow_plot(8,'none', bin = NA)
+dens_flow_plot(8,'none', bin = TRUE)
+```
+
+```{r filter segment 8}
+
 ```
 
 ### Segment 9
 
 ```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(9,'none', bin = NA)
+dens_flow_plot(9,'none', bin = TRUE)
 ```
 
+```{r filter segment 9}
 
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 100)) %>%
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin == 38)) %>%
+  filter(!(Segment == 9 & Delay_type == 'Crash' & Density_bin > 38)) %>%
+  filter(!(Segment == 9 & Delay_type == 'None' & Density_bin > 75))
+
+```
 
 ### Dens_Flow Table
 
