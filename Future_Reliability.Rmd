@@ -428,7 +428,7 @@ dens_tti_plot <- function(seg,legend = '', sp = 1){
 
 ```{r Density vs TT seg1, fig.width = 11, echo = FALSE, message = FALSE}
 
-dens_tti_plot(1,'none',1)
+dens_tti_plot(1,'',1)
 ```
 
 ### Segment 2
@@ -540,8 +540,10 @@ dens_flow_plot(1,'', bin = TRUE)
 ```{r filter segment 1}
 
 Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
-  filter(!(Segment == 1 & Delay_type == 'Crash' & Density_bin > 100))
+  # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 70)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 80)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 100))
 
 ```
 
@@ -717,15 +719,13 @@ Rel_bin <- merge(Rel_bin,dens_flow_tab,
 
 ```{r develop model, message = FALSE}
 sample_data <- Rel_bin %>%
-  filter(Segment == 1,
-         Delay_type == 'Crash',
-         quantiles == '5%') %>%
+  filter(Segment == 1, Delay_type == 'None', quantiles == '25%', !is.na(DC)) %>%
   select(DC, TTI)
 ```
 
 ```{r}
-
-formulaExp <- as.formula(TTI ~(DC <= .75) + (DC > .75) * ( mu * (DC ^ b)))
+br <- .92
+formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
 # preview(formulaExp, data = sample_data, start = list(mu, b))
@@ -735,7 +735,7 @@ sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
 pred <- data.frame(DC = 1.57)
-predict(sample_nls,pred)
+# predict(sample_nls,pred)
 ```
 
 ```{r custom formula}
