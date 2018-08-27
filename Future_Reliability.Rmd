@@ -84,10 +84,11 @@ Density is the Hourly Flow divided by speed. Unit: Vehicles per hour.
 We also create a variable that measures the delay type experienced by the segment. Weather (snow) events and crashes were tracked for the time period. If the segment experiences a weather event and a crash, weather will be the controlling delay type.
 
 
-```{r add_variables}
+```{r add_variables, include=FALSE}
 
-Segments_494 <- DBI::dbReadTable(drv, 'Segments_494') %>%
-  filter(!is.na(Length)) %>%
+Seg <- DBI::dbReadTable(drv, 'Segments_494')
+
+Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
   select(Segment = Segment_No, Lanes, Length) %>%
   arrange(Segment)
 
@@ -106,7 +107,7 @@ Rel <- Data_494 %>%
 ```
 
 
-``` {r add_conditionals}
+``` {r add_conditionals, include = FALSE}
 
 test_list <- list()
 result <- vector()
@@ -149,7 +150,7 @@ Rel <- Rel %>%
 ```
 
 
-```{r linear model}
+```{r linear model, include = FALSE}
 dat <- Rel[Rel$Segment == 8,]
 
 smp_size <- floor(0.75 * nrow(dat))
@@ -174,7 +175,7 @@ pred <- arrange(pred,desc(diff))
 
 Check the dataset for outliers by plottling all of the travel time obsevations for each segment. 
 
-```{r filter for outlier, echo=FALSE}
+```{r filter for outlier, echo=FALSE, include = FALSE}
 
 ggplot(Rel,aes(x = as.factor(Segment),y = TT_mean)) +
   geom_boxplot(outlier.shape = NA) +
@@ -191,7 +192,7 @@ We see three significant outliers in Segment 9. Upon inspection of the dataset, 
 Rel %>%
   filter(Segment == 9) %>%
   arrange(desc(TT_mean)) %>%
-  print(n=20)
+  print()
 
 ```
 
@@ -269,32 +270,6 @@ head(Rel_bin)
 
 The Free Flow speeds were calcuated using the 95th percentile speeds. 
 
-```{r join FF to large dataset}
-
-table(duplicated(Rel_bin[,1:5]))
-
-Rel_q <- Rel %>% 
-  select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
-  data.table()
-
-TT_q <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
-setkey(TT_q, NULL)
-setkey(TT_q, Segment, Delay_type, Density_bin, TT_q)
-
-join_TT <- TT_q[Rel_q, roll = 'nearest', .(TT_quantile = x.TT_q,
-                                           TT_mean = i.TT_q,
-                                           FF_quantile = FF_quantile,
-                                           Quantiles = quantiles,
-                                           Index = Index)]
-head(join_TT)
-join_TT <- join_TT[!duplicated(join_TT$Index),]
-
-Rel <- merge(Rel, join_TT[, c('Index', 'TT_quantile', 'FF_quantile', 'Quantiles')], by = 'Index')
-
-rm(Rel_q, TT_q)
-```
-
-
 
 ## MAP
 
@@ -322,7 +297,7 @@ m
 
 ### freeflowplots
 
-```{r}
+```{r free flow plot, include = FALSE}
 free_flow_plot <- function(seg, legend = ''){
   ff <- ggplot()+
     geom_point(data = data.frame(Rel_bin[Rel_bin$Segment == seg,]),
@@ -392,14 +367,14 @@ free_flow_plot(7, 'none')
 
 ```{r free flow plot seg 8, fig.width = 11,echo = FALSE, message = FALSE}
 
-free_flow_plot(8 'none')
+free_flow_plot(8, 'none')
 
 ```
 
 ### Segment 9
 
 ```{r free flow plot seg 9, fig.width = 11,echo = FALSE, message = FALSE}
-free_flow_plot(9 'none')
+free_flow_plot(9, 'none')
 ```
 
 ## DENSITY vs TT {.tabset .tabset-fade}
@@ -523,7 +498,7 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
 }
 ```
 
-```{r}
+```{r save pre filter data, include=FALSE}
 Rel_bin_preFilter <- Rel_bin
 # Rel_bin <- Rel_bin_preFilter
 ```
@@ -543,7 +518,9 @@ Rel_bin <- Rel_bin %>%
   # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 70)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 80)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 100))
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 100)) %>%
+    filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 70)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 80))
 
 ```
 
@@ -557,9 +534,7 @@ dens_flow_plot(2,'none', bin = TRUE)
 
 ```{r filter segment 2}
 
-Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 2 & Delay_type == 'Weather' & Density_bin > 101)) %>%
-  filter(!(Segment == 2 & Delay_type == 'Crash' & Density_bin > 125))
+
 
 ```
 
@@ -571,12 +546,8 @@ Rel_bin <- Rel_bin %>%
 dens_flow_plot(3,'none', bin = TRUE)
 ```
 
-```{r filter segment 2}
+```{r filter segment 3}
 
-Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 3 & Delay_type == 'Weather' & Density_bin > 99)) %>%
-  filter(!(Segment == 3 & Delay_type == 'Crash' & Density_bin > 151)) %>%
-  filter(!(Segment == 3 & Delay_type == 'None' & Density_bin > 151))
 
 ```
 
@@ -589,11 +560,7 @@ dens_flow_plot(4,'none', bin = TRUE)
 
 ```{r filter segment 4}
 
-Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 4 & Delay_type == 'Weather' & Density_bin == 50)) %>%
-  filter(!(Segment == 4 & Delay_type == 'Weather' & Density_bin > 60)) %>%
-  filter(!(Segment == 4 & Delay_type == 'Crash' & Density_bin == 50)) %>%
-  filter(!(Segment == 4 & Delay_type == 'None' & Density_bin > 101))
+
 
 ```
 
@@ -628,11 +595,6 @@ dens_flow_plot(7,'none', bin = TRUE)
 
 ```{r filter segment 7}
 
-Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 7 & Delay_type == 'Weather' & Density_bin > 51)) %>%
-  filter(!(Segment == 7 & Delay_type == 'Crash' & Density_bin > 51)) %>%
-  filter(!(Segment == 7 & Delay_type == 'None' & Density_bin > 51))
-
 ```
 
 ### Segment 8
@@ -655,18 +617,16 @@ dens_flow_plot(9,'none', bin = TRUE)
 ```{r filter segment 9}
 
 Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 100)) %>%
-  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin == 38)) %>%
-  filter(!(Segment == 9 & Delay_type == 'Crash' & Density_bin > 38)) %>%
-  filter(!(Segment == 9 & Delay_type == 'None' & Density_bin > 75))
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 59)) %>%
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin == 38)) 
 
 ```
 
 ### Dens_Flow Table
 
-```{r}
+```{r load density flow manual table, include = FALSE}
 
-dens_flow_tab <- read.csv('congestion density flow table.csv') 
+dens_flow_tab <- read.csv('./Future/congestion density flow table.csv')
 dens_flow_tab <- dcast(dens_flow_tab, Segment + quantiles + Delay_type ~ Measure, value.var = 'Value') %>%
   select(Density_cong = Density, Flow_cong = Flow, everything())
 head(dens_flow_tab)
@@ -674,13 +634,8 @@ head(dens_flow_tab)
 
 ## MODELMAX
 
-We need to find the congestion point for each Delay type and percentile.
 
-### SEGMENT 
-
-
-
-```{r R^2}
+```{r R^2, include=FALSE}
 
 some_data <- Rel_bin %>%
   filter(Segment == 2, Delay_type == 'None', quantiles == '75%') %>%
@@ -705,7 +660,7 @@ ggplotly(g, tooltip = 'text')
 ```
 
 
-```{r calculate Demand}
+```{r calculate Demand, include=FALSE}
 
 Rel_bin <- merge(Rel_bin,dens_flow_tab,
                  by = c('Delay_type','quantiles', 'Segment')) %>%
@@ -719,12 +674,12 @@ Rel_bin <- merge(Rel_bin,dens_flow_tab,
 
 ```{r develop model, message = FALSE}
 sample_data <- Rel_bin %>%
-  filter(Segment == 1, Delay_type == 'None', quantiles == '25%', !is.na(DC)) %>%
+  filter(Segment == 1, Delay_type == 'None', quantiles == '95%', !is.na(DC)) %>%
   select(DC, TTI)
 ```
 
-```{r}
-br <- .92
+```{r, include=FALSE}
+br <- 0.89
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
@@ -734,58 +689,181 @@ mu <- 1.5
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
-pred <- data.frame(DC = 1.57)
-# predict(sample_nls,pred)
-```
-
-```{r custom formula}
-
-formulaExp <- as.formula(TTI ~(DC <= .65) + (DC > .65) * ( mu * (DC ^ b)))
-b <- 3
-mu <- 1.5
-# preview(formulaExp, data = sample_data, start = list(mu, b))
-
-
-sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
-plotfit(sample_nls, smooth = TRUE)
-
-pred <- data.frame(DC = 1.57)
+pred <- data.frame(DC = 1.44)
 predict(sample_nls,pred)
 ```
 
 
 
+##Predict
+
+```{r create prediction model, include = FALSE}
+
+func_exp <- function(x) {
+  nls(
+    TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)),
+    start = list(mu = 1.5, b = 3),
+    data = x)
+}
+
+
+formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
+
+model_nls <- Rel_bin %>%
+  nest(-Delay_type,-quantiles) %>%
+  mutate(fit = purrr::map(data, func_exp)) 
+
+breaks <- read.csv('./Future/model_breaks.csv')
+
+```
+
+```{r join model to table predict on DC, include = FALSE}
+table(duplicated(Rel_bin[,1:5]))
+
+Rel_p <- Rel
+
+Rel_q <- Rel_p %>% 
+  select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
+  data.table()
+
+TT_q <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
+setkey(TT_q, NULL)
+setkey(TT_q, Segment, Delay_type, Density_bin, TT_q)
+
+join_TT <- TT_q[Rel_q, roll = 'nearest', .(TT_quantile = x.TT_q,
+                                           TT_mean = i.TT_q,
+                                           FF_quantile = FF_quantile,
+                                           FF = FF_quantile,
+                                           Delay_type = Delay_type,
+                                           Quantiles = quantiles,
+                                           Flow_cong = Flow_cong,
+                                           Density_cong = Density_cong,
+                                           Index = Index,
+                                           br = br)]
+head(join_TT)
+join_TT <- join_TT[!duplicated(join_TT$Index),]
+
+Rel_p <- merge(Rel_p, 
+                 join_TT[,c('Index','TT_quantile','Quantiles','Flow_cong','Density_cong','FF','br')],
+                 by = 'Index', all.x=TRUE)
+
+table(is.na(Rel_p$Flow_cong))
+
+Rel_p <- Rel_p %>%
+  mutate(Demand  = ifelse(Density_bin <= Density_cong,Hourly_Flow,2*Flow_cong - Hourly_Flow),
+         DC = Demand/Flow_cong,
+         TTI = TT_mean/(Length/FF * 60)) %>%
+  nest(-Delay_type, -Quantiles)
+  
+
+Rel_p <- merge(Rel_p,model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  as.tibble() %>%
+  mutate(pred = map2(fit,data,predict)) %>%
+  as.tibble() %>%
+  unnest(data,pred)
+
+```
+
+## Prediction Results {.tabset .tabset-fade}
+
+```{r prediction plotting fuction, include = FALSE}
+plot_predict <- function(Seg){
+  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x=TTI,y=pred, color=Quantiles))+
+  geom_point()+
+  # scale_x_continuous(breaks = c(1,2,3,4,5))+
+  # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
+  facet_grid(~Delay_type)
+ggplotly(pr)
+}
+```
+
+### Prediction Segment 1
+
+```{r plot predict seg1}
+plot_predict(1)
+```
+
+### Prediction Segment 2
+
+```{r plot predict seg2}
+plot_predict(2)
+```
+
+### Prediction Segment 3
+
+```{r plot predict seg3}
+plot_predict(3)
+```
+
+### Prediction Segment 4
+
+```{r plot predict seg4}
+plot_predict(4)
+```
+
+### Prediction Segment 5
+
+```{r plot predict seg5}
+plot_predict(5)
+```
+
+### Prediction Segment 6
+
+```{r plot predict seg6}
+plot_predict(6)
+```
+
+### Prediction Segment 7
+
+```{r plot predict seg7}
+plot_predict(7)
+```
+
+### Prediction Segment 8
+
+```{r plot predict seg8}
+plot_predict(8)
+```
+
+### Prediction Segment 8
+
+```{r plot predict seg9}
+plot_predict(8)
+```
 
 ## HEATMAP {.tabset .tabset-fade}
 
 ```{r heatmap,include = FALSE, message = FALSE}
 
-TT_heat <-function(data,seg){ 
+TT_heat <-function(data,seg, model){ 
+  
   heat <- data %>%
-  filter(Segment == seg) %>% 
-  select(DateTime, TT_mean, Length) %>% 
-  mutate(HourMin = format(DateTime, '%H:%M'),
-         YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
-         TTI = TT_mean/(Length/60 * 60),
-         TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
-                                 ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
-                                        ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
-                                               ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
-                                                      ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
-                                                             ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
-                                                                    ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
-                                                                           ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
-                                                                                  ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
-                          levels = (c('>4.0 TTI',
-                                      '3.5 TTI - 4.0 TTI',
-                                      '3.0 TTI - 3.5 TTI',
-                                      '2.5 TTI - 3.0 TTI',
-                                      '2.0 TTI - 2.5 TTI',
-                                      '1.5 TTI - 2.0 TTI',
-                                      '45 mph TT - 1.5 TTI',
-                                      'Speed Limit TT - 45 mph TT',
-                                      '<Speed Limit TT')))) 
-
+    filter(Segment == seg) %>% 
+    select(DateTime, TT_mean, Length, pred) %>% 
+    mutate(HourMin = format(DateTime, '%H:%M'),
+           YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
+           mod = model,
+           TTI = ifelse(mod == TRUE,
+                        pred/(Length/60 * 60),
+                        TT_mean/(Length/60 * 60)),
+           TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
+                                   ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
+                                          ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
+                                                 ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
+                                                        ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
+                                                               ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
+                                                                      ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
+                                                                             ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
+                                                                                    ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
+                            levels = (c('>4.0 TTI',
+                                        '3.5 TTI - 4.0 TTI',
+                                        '3.0 TTI - 3.5 TTI',
+                                        '2.5 TTI - 3.0 TTI',
+                                        '2.0 TTI - 2.5 TTI',
+                                        '1.5 TTI - 2.0 TTI',
+                                        '45 mph TT - 1.5 TTI',
+                                        'Speed Limit TT - 45 mph TT',
+                                        '<Speed Limit TT')))) 
 
   
 library(RColorBrewer)
@@ -795,21 +873,26 @@ colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors)
 fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors)
 break_axis <- c('06:00','09:00','12:00','15:00','18:00','21:00')
 
+predicted_TF <- ifelse(model == TRUE,'predicted values','measured values')
+
 g <- ggplot(heat) +
   geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
   theme_tufte(base_size = 15) +
   scale_y_discrete(breaks = break_axis) +
   colScale + fillScale +
-  ggtitle(paste('Segment', seg, 'Free Flow:'))
+  ggtitle(paste('Segment', seg, 'TTI Heatmap','-',predicted_TF))
 return(g)
 }
 ```
+
 
 ### SEGMENT 1
 
 ```{r heatmap seg1, fig.width=12}
 
-TT_heat(Rel,1)
+TT_heat(Rel_p,1, model = FALSE)
+
+TT_heat(Rel_p,1, model = TRUE)
 
 ```
 
@@ -817,16 +900,19 @@ TT_heat(Rel,1)
 
 ```{r heatmap seg2, fig.width=12}
 
-TT_heat(Rel,2)
+TT_heat(Rel_p,2, FALSE)
+
+TT_heat(Rel_p,2, TRUE)
 
 ```
-
 
 ### SEGMENT 3
 
 ```{r heatmap seg3, fig.width=12}
 
-TT_heat(Rel,3)
+TT_heat(Rel_p,3, FALSE)
+
+TT_heat(Rel_p,3, TRUE)
 
 ```
 
@@ -834,7 +920,9 @@ TT_heat(Rel,3)
 
 ```{r heatmap seg4, fig.width=12}
 
-TT_heat(Rel,4)
+TT_heat(Rel_p,4, FALSE)
+
+TT_heat(Rel_p,4, TRUE)
 
 ```
 
@@ -842,7 +930,9 @@ TT_heat(Rel,4)
 
 ```{r heatmap seg5, fig.width=12}
 
-TT_heat(Rel,5)
+TT_heat(Rel_p,5, FALSE)
+
+TT_heat(Rel_p,5, TRUE)
 
 ```
 
@@ -850,7 +940,9 @@ TT_heat(Rel,5)
 
 ```{r heatmap seg6, fig.width=12}
 
-TT_heat(Rel,6)
+TT_heat(Rel_p,6, FALSE)
+
+TT_heat(Rel_p,6, TRUE)
 
 ```
 
@@ -858,7 +950,9 @@ TT_heat(Rel,6)
 
 ```{r heatmap seg7, fig.width=12}
 
-TT_heat(Rel,7)
+TT_heat(Rel_p,7, FALSE)
+
+TT_heat(Rel_p,7, TRUE)
 
 ```
 
@@ -866,7 +960,9 @@ TT_heat(Rel,7)
 
 ```{r heatmap seg8, fig.width=12}
 
-TT_heat(Rel,8)
+TT_heat(Rel_p,8, FALSE)
+
+TT_heat(Rel_p,8, TRUE)
 
 ```
 
@@ -874,6 +970,8 @@ TT_heat(Rel,8)
 
 ```{r heatmap seg9, fig.width=12}
 
-TT_heat(Rel,9)
+TT_heat(Rel_p,9, FALSE)
+
+TT_heat(Rel_p,9, TRUE)
 
 ```
