@@ -86,11 +86,13 @@ We also create a variable that measures the delay type experienced by the segmen
 
 ```{r add_variables, include=FALSE}
 
-Seg <- DBI::dbReadTable(drv, 'Segments_494')
-
-Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
-  select(Segment = Segment_No, Lanes, Length) %>%
-  arrange(Segment)
+# Seg <- DBI::dbReadTable(drv, 'Segments_494')
+# 
+# Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
+#   select(Segment = Segment_No, Lanes, Length) %>%
+#   arrange(Segment)
+dir()
+Segments_494 <- read.csv('Segments.csv')
 
 Data_494 <- merge(Data_494, Segments_494, by = 'Segment')
 
@@ -175,7 +177,7 @@ pred <- arrange(pred,desc(diff))
 
 Check the dataset for outliers by plottling all of the travel time obsevations for each segment. 
 
-```{r filter for outlier, echo=FALSE, include = FALSE}
+```{r filter for outlier, echo=FALSE}
 
 ggplot(Rel,aes(x = as.factor(Segment),y = TT_mean)) +
   geom_boxplot(outlier.shape = NA) +
@@ -295,8 +297,6 @@ m
 
 ## FREE FLOW PLOTS {.tabset .tabset-fade}
 
-### freeflowplots
-
 ```{r free flow plot, include = FALSE}
 free_flow_plot <- function(seg, legend = ''){
   ff <- ggplot()+
@@ -319,6 +319,8 @@ free_flow_plot <- function(seg, legend = ''){
 
 free_flow_plot(1, 'none')
 ```
+
+
 
 ### Segment 2
 
@@ -380,8 +382,6 @@ free_flow_plot(9, 'none')
 ## DENSITY vs TT {.tabset .tabset-fade}
 
 A look at the Density vs travel time plots. A generic smooting function has been added. 
-
-###dens_TTI_plot
 
 ```{r dens vs tti plot, include=FALSE}
 
@@ -465,10 +465,6 @@ dens_tti_plot(9,'none',1)
 
 Below are the Flow vs Density plots for each condition. 
 
-Verical lines show the congestion Density for each condition. 
-
-### dens_flow_plot
-
 ```{r dens_flow_plot, include=FALSE}
 
 dens_flow_plot <- function(seg,legend='', bin = NA){
@@ -503,11 +499,9 @@ Rel_bin_preFilter <- Rel_bin
 # Rel_bin <- Rel_bin_preFilter
 ```
 
-
-
 ### Segment 1
 
-```{r Density vs Flow seg1, fig.width = 11,echo = FALSE, message = FALSE}
+```{r Density vs Flow seg1, fig.width = 12,echo = FALSE, message = FALSE}
 
 dens_flow_plot(1,'', bin = TRUE)
 ```
@@ -517,9 +511,14 @@ dens_flow_plot(1,'', bin = TRUE)
 Rel_bin <- Rel_bin %>%
   # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 70)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
+  filter(!(Segment == 1 & quantiles == '10%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
+   # filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin >59)) %>%
+   #  filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
+   #  filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin == 46)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 80)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 100)) %>%
-    filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 70)) %>%
+  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 70)) %>%
   filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 80))
 
 ```
@@ -579,11 +578,13 @@ dens_flow_plot(5,'none', bin = TRUE)
 
 ```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(6,'none', bin = TRUE)
+dens_flow_plot(6,'', bin = TRUE)
 ```
 
 ```{r filter segment 6}
-
+Rel_bin <- Rel_bin %>%
+  # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
+  filter(!(Segment == 6 & Density_bin > 59))
 ```
 
 ### Segment 7
@@ -611,7 +612,7 @@ dens_flow_plot(8,'none', bin = TRUE)
 
 ```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(9,'none', bin = TRUE)
+dens_flow_plot(9,'', bin = TRUE)
 ```
 
 ```{r filter segment 9}
@@ -622,7 +623,8 @@ Rel_bin <- Rel_bin %>%
 
 ```
 
-### Dens_Flow Table
+
+###
 
 ```{r load density flow manual table, include = FALSE}
 
@@ -631,9 +633,6 @@ dens_flow_tab <- dcast(dens_flow_tab, Segment + quantiles + Delay_type ~ Measure
   select(Density_cong = Density, Flow_cong = Flow, everything())
 head(dens_flow_tab)
 ```
-
-## MODELMAX
-
 
 ```{r R^2, include=FALSE}
 
@@ -674,12 +673,10 @@ Rel_bin <- merge(Rel_bin,dens_flow_tab,
 
 ```{r develop model, message = FALSE}
 sample_data <- Rel_bin %>%
-  filter(Segment == 1, Delay_type == 'None', quantiles == '95%', !is.na(DC)) %>%
+  filter(Segment == 9, Delay_type == 'Weather', quantiles == '95%', !is.na(DC)) %>%
   select(DC, TTI)
-```
 
-```{r, include=FALSE}
-br <- 0.89
+br <- 0.88
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
@@ -689,13 +686,10 @@ mu <- 1.5
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
-pred <- data.frame(DC = 1.44)
-predict(sample_nls,pred)
+# pred <- data.frame(DC = 1.44)
+# predict(sample_nls,pred)
 ```
 
-
-
-##Predict
 
 ```{r create prediction model, include = FALSE}
 
@@ -779,55 +773,55 @@ ggplotly(pr)
 
 ### Prediction Segment 1
 
-```{r plot predict seg1}
+```{r plot predict seg1, fig.width=12}
 plot_predict(1)
 ```
 
 ### Prediction Segment 2
 
-```{r plot predict seg2}
+```{r plot predict seg2, fig.width=12}
 plot_predict(2)
 ```
 
 ### Prediction Segment 3
 
-```{r plot predict seg3}
+```{r plot predict seg3, fig.width=12}
 plot_predict(3)
 ```
 
 ### Prediction Segment 4
 
-```{r plot predict seg4}
+```{r plot predict seg4, fig.width=12}
 plot_predict(4)
 ```
 
 ### Prediction Segment 5
 
-```{r plot predict seg5}
+```{r plot predict seg5, fig.width=12}
 plot_predict(5)
 ```
 
 ### Prediction Segment 6
 
-```{r plot predict seg6}
+```{r plot predict seg6, fig.width=12}
 plot_predict(6)
 ```
 
 ### Prediction Segment 7
 
-```{r plot predict seg7}
+```{r plot predict seg7, fig.width=12}
 plot_predict(7)
 ```
 
 ### Prediction Segment 8
 
-```{r plot predict seg8}
+```{r plot predict seg8, fig.width=12}
 plot_predict(8)
 ```
 
 ### Prediction Segment 8
 
-```{r plot predict seg9}
+```{r plot predict seg9, fig.width=12}
 plot_predict(8)
 ```
 
@@ -884,7 +878,6 @@ g <- ggplot(heat) +
 return(g)
 }
 ```
-
 
 ### SEGMENT 1
 
