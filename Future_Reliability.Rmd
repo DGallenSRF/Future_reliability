@@ -86,13 +86,12 @@ We also create a variable that measures the delay type experienced by the segmen
 
 ```{r add_variables, include=FALSE}
 
-# Seg <- DBI::dbReadTable(drv, 'Segments_494')
-# 
-# Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
-#   select(Segment = Segment_No, Lanes, Length) %>%
-#   arrange(Segment)
-dir()
-Segments_494 <- read.csv('Segments.csv')
+Seg <- DBI::dbReadTable(drv, 'Segments_494')
+
+Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
+  select(Segment = Segment_No, Lanes, Length) %>%
+  arrange(Segment)
+
 
 Data_494 <- merge(Data_494, Segments_494, by = 'Segment')
 
@@ -149,28 +148,6 @@ Rel <- Rel %>%
          Index = seq(1,length(Speed),1),
          Is_weekday = ifelse(WeekDay %in% c('Monday','Tuesday','Wednesday','Thursday','Friday'),1,0))
 
-```
-
-
-```{r linear model, include = FALSE}
-dat <- Rel[Rel$Segment == 8,]
-
-smp_size <- floor(0.75 * nrow(dat))
-set.seed(543)
-train_ind <- sample(seq_len(nrow(dat)), size = smp_size)
-
-train <- dat[train_ind,]
-test <- dat[-train_ind,]
-
-fit <- glm(data = train, TT_mean ~ factor(Month) + factor(WeekDay) + factor(Crash)  + factor(weather2hour) + VMT_total)
-
-p <- predict(fit, test)
-
-pred <- data.frame(x = test$TT_mean, y = p)
-plot(pred$x,pred$y)
-pred$diff <- (pred$x - pred$y)
-
-pred <- arrange(pred,desc(diff))
 ```
 
 
@@ -383,7 +360,7 @@ free_flow_plot(9, 'none')
 
 A look at the Density vs travel time plots. A generic smooting function has been added. 
 
-```{r dens vs tti plot, include=FALSE}
+```{r dens vs tt plot, include=FALSE}
 
 dens_tti_plot <- function(seg,legend = '', sp = 1){
   tt <- ggplot()+
@@ -398,15 +375,32 @@ dens_tti_plot <- function(seg,legend = '', sp = 1){
 }
 ```
 
+```{r save pre filter data, include=FALSE}
+Rel_bin_preFilter <- Rel_bin
+# Rel_bin <- Rel_bin_preFilter
+```
 
 ### Segment 1
 
-```{r Density vs TT seg1, fig.width = 11, echo = FALSE, message = FALSE}
+```{r seg1 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 1 & Density_bin > 199)) %>%
+  filter(!(Segment == 1 & Delay_type == 'None' & Density_bin > 100)) %>%
+  filter(!(Segment == 1 & Delay_type == 'Crash' & Density_bin > 45))
 
+```
+
+```{r Density vs TT seg1, fig.width = 11, echo = FALSE, message = FALSE}
 dens_tti_plot(1,'',1)
 ```
 
 ### Segment 2
+
+```{r seg2 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 2 & Delay_type == 'Crash' & Density_bin > 100)) %>%
+  filter(!(Segment == 2 & Delay_type == 'Weather' & Density_bin > 81))
+```
 
 ```{r Density vs TT seg 2, fig.width = 11,echo = FALSE, message = FALSE}
 
@@ -415,12 +409,26 @@ dens_tti_plot(2,'none',1)
 
 ### Segment 3
 
-```{r Density vs TT seg 3, fig.width = 11,echo = FALSE, message = FALSE}
+```{r seg3 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 3 & Delay_type == 'None' & Density_bin > 90)) %>%
+  filter(!(Segment == 3 & Delay_type == 'Crash' & Density_bin > 101)) 
+```
 
+```{r Density vs TT seg 3, fig.width = 11,echo = FALSE, message = FALSE}
 dens_tti_plot(3,'none',1)
 ```
 
 ### Segment 4
+
+```{r seg4 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 4 & Delay_type == 'None' & Density_bin > 59)) %>%
+  filter(!(Segment == 4 & Delay_type == 'None' & Density_bin == 50)) %>%
+  filter(!(Segment == 4 & Delay_type == 'Weather' & Density_bin > 40)) %>%
+  filter(!(Segment == 4 & Delay_type == 'Crash' & Density_bin == 48)) 
+
+```
 
 ```{r Density vs TT seg 4, fig.width = 11,echo = FALSE, message = FALSE}
 
@@ -430,45 +438,85 @@ dens_tti_plot(4,'none',1)
 ### Segment 5
 
 ```{r Density vs TT seg 5, fig.width = 11,echo = FALSE, message = FALSE}
-
 dens_tti_plot(5,'none',1)
 ```
 
 ### Segment 6
 
-```{r Density vs TT seg6, fig.width = 11,echo = FALSE, message = FALSE}
+```{r seg6 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 6 & Delay_type == 'None' & Density_bin > 70)) 
+```
 
+```{r Density vs TT seg6, fig.width = 11,echo = FALSE, message = FALSE}
 dens_tti_plot(6,'none',1)
 ```
 
 ### Segment 7
 
+```{r seg7 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 7 & Delay_type == 'Weather' & Density_bin > 59)) %>%
+  filter(!(Segment == 7 & Delay_type == 'None' & Density_bin > 46)) %>%
+  filter(!(Segment == 7 & Delay_type == 'Crash' & Density_bin > 46))
+
+```
+
 ```{r Density vs TT seg  7, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_tti_plot(7,'none',1)
+dens_tti_plot(7,'none',0.75)
 ```
 
 ### Segment 8
+
+```{r seg8 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 8 & Delay_type == 'None' & Density_bin > 80)) %>%
+  filter(!(Segment == 8 & Delay_type == 'Crash' & Density_bin == 80))
+
+```
 
 ```{r Density vs TT seg 8, fig.width = 11,echo = FALSE, message = FALSE}
 dens_tti_plot(8,'none',1)
 ```
 
+
+
 ### Segment 9
+
+```{r seg9 filter}
+Rel_bin <- Rel_bin %>%
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 40)) %>%
+  filter(!(Segment == 9 & Delay_type == 'None' & Density_bin > 80)) %>%
+  filter(!(Segment == 9 & Delay_type == 'Crash' & Density_bin > 38))
+
+```
 
 ```{r Density vs TT seg9, fig.width = 11,echo = FALSE, message = FALSE}
 
 dens_tti_plot(9,'none',1)
 ```
 
+
 ## DENSITY vs FLOW {.tabset .tabset-fade}
 
 Below are the Flow vs Density plots for each condition. 
+
+```{r load density flow manual table, include = FALSE}
+
+dens_flow_tab <- read.csv('./congestion density flow table.csv')
+dens_flow_tab <- dcast(dens_flow_tab, Segment + quantiles + Delay_type + Axis ~ Measure, value.var = 'Value') %>%
+  select(Density_cong = Density, Flow_cong = Flow, everything())
+head(dens_flow_tab)
+```
 
 ```{r dens_flow_plot, include=FALSE}
 
 dens_flow_plot <- function(seg,legend='', bin = NA){
   
+  dens_flow_data <- filter(dens_flow_tab, Segment == seg)
+  
+  flow_dens <- 
   if(is.na(bin)){
     dat <- Rel[Rel$Segment == seg,]
     plot_x <- 'Dens'
@@ -481,9 +529,16 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
     q <- 'quantiles'
   }
   
-  tt <- ggplot(data=dat,
-               aes_string(x= plot_x,y = plot_y, color= q))+
-    geom_point()+
+  tt <- ggplot()+
+    geom_point(data=dat, aes_string(x= plot_x,y = plot_y, color= q))+
+    geom_segment(data = dens_flow_data, 
+                 aes(x = Density_cong, y = Axis,
+                     xend = Density_cong, yend = Flow_cong,
+                     color = quantiles), linetype = 'dashed') +
+    geom_segment(data = dens_flow_data, 
+                 aes(x = Axis, y = Flow_cong,
+                     xend = Density_cong, yend = Flow_cong,
+                     color = quantiles), linetype = 'dashed') +
     # geom_smooth(span=0.75,se=F)+
     facet_grid(~Delay_type, scales = 'free')+
     # scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
@@ -491,12 +546,25 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
     theme(legend.position=legend)+
     ggtitle(paste('Segment:',seg))
   ggplotly(tt)
+  
 }
 ```
 
-```{r save pre filter data, include=FALSE}
-Rel_bin_preFilter <- Rel_bin
-# Rel_bin <- Rel_bin_preFilter
+```{r}
+
+dat <- dens_flow_tab[dens_flow_tab$Segment == 1,]
+
+ggplot()+
+  geom_point(data=Rel_bin, aes(x = Density_bin, y = Flow, color = quantiles)) +
+  geom_segment(data = dat, aes(x = Density_cong, y = Axis, xend = Density_cong, yend = Flow_cong, color = quantiles)) +
+    geom_segment(data = dat, aes(x = Axis, y = Flow_cong, xend = Density_cong, yend = Flow_cong, color = quantiles) ) +
+  # geom_smooth(span=0.75,se=F)+
+  facet_grid(~Delay_type, scales = 'free')+
+  # scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
+  # scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
+  # theme(legend.position=legend)+
+  ggtitle(paste('Segment:',1))
+
 ```
 
 ### Segment 1
@@ -504,23 +572,6 @@ Rel_bin_preFilter <- Rel_bin
 ```{r Density vs Flow seg1, fig.width = 12,echo = FALSE, message = FALSE}
 
 dens_flow_plot(1,'', bin = TRUE)
-```
-
-```{r filter segment 1}
-
-Rel_bin <- Rel_bin %>%
-  # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 70)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
-  filter(!(Segment == 1 & quantiles == '10%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
-   # filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin >59)) %>%
-   #  filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin == 36)) %>%
-   #  filter(!(Segment == 1 & quantiles == '95%' & Delay_type == 'Crash' & Density_bin == 46)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 80)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'None' & Density_bin == 100)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 70)) %>%
-  filter(!(Segment == 1 & quantiles == '5%' & Delay_type == 'Weather' & Density_bin == 80))
-
 ```
 
 
@@ -532,9 +583,6 @@ dens_flow_plot(2,'none', bin = TRUE)
 ```
 
 ```{r filter segment 2}
-
-
-
 ```
 
 
@@ -546,8 +594,6 @@ dens_flow_plot(3,'none', bin = TRUE)
 ```
 
 ```{r filter segment 3}
-
-
 ```
 
 ### Segment 4
@@ -559,8 +605,6 @@ dens_flow_plot(4,'none', bin = TRUE)
 
 ```{r filter segment 4}
 
-
-
 ```
 
 ### Segment 5
@@ -570,8 +614,6 @@ dens_flow_plot(5,'none', bin = TRUE)
 ```
 
 ```{r filter segment 5}
-
-
 ```
 
 ### Segment 6
@@ -624,15 +666,7 @@ Rel_bin <- Rel_bin %>%
 ```
 
 
-###
-
-```{r load density flow manual table, include = FALSE}
-
-dens_flow_tab <- read.csv('./Future/congestion density flow table.csv')
-dens_flow_tab <- dcast(dens_flow_tab, Segment + quantiles + Delay_type ~ Measure, value.var = 'Value') %>%
-  select(Density_cong = Density, Flow_cong = Flow, everything())
-head(dens_flow_tab)
-```
+## DEMAND
 
 ```{r R^2, include=FALSE}
 
@@ -671,12 +705,100 @@ Rel_bin <- merge(Rel_bin,dens_flow_tab,
 
 ```
 
+## TTI vs DEMAND {.tabset .tabset-fade}
+
+A look at the Density vs travel time plots. A generic smooting function has been added. 
+
+```{r TTI vs Demand plot, include=FALSE}
+
+demand_tti_plot <- function(seg,legend = '', sp = 1){
+  tt <- ggplot()+
+    geom_point(data=Rel_bin[Rel_bin$Segment == seg,],
+               aes(x= Demand,y = TTI, color= quantiles))+
+    geom_smooth(data=Rel_bin[Rel_bin$Segment == seg,],
+                aes(x= Demand,y = TTI, color= quantiles),span=sp,se=F)+
+    facet_grid(~Delay_type, scales = 'free')+
+    theme(legend.position=legend)+
+    ggtitle(paste('Segment:',seg))
+  ggplotly(tt)
+}
+```
+
+
+
+### Segment 1
+
+```{r TTI vs Demand seg1, fig.width = 12,echo = FALSE, message = FALSE}
+
+demand_tti_plot(1,'',1)
+```
+
+### Segment 2
+
+```{r TTI vs Demand seg2, fig.width = 11,echo = FALSE, message = FALSE}
+
+demand_tti_plot(2,'',1)
+```
+
+
+### Segment 3
+
+```{r TTI vs Demand seg3, fig.width = 11,echo = FALSE, message = FALSE}
+
+demand_tti_plot(3,'',1)
+```
+
+### Segment 4
+
+```{r TTI vs Demand seg4, fig.width = 11,echo = FALSE, message = FALSE}
+
+demand_tti_plot(4,'',1)
+```
+
+
+### Segment 5
+
+```{r TTI vs Demand seg5, fig.width = 11,echo = FALSE, message = FALSE}
+demand_tti_plot(5,'',1)
+```
+
+
+### Segment 6
+
+```{r TTI vs Demand seg6, fig.width = 11,echo = FALSE, message = FALSE}
+
+demand_tti_plot(6,'',1)
+```
+
+### Segment 7
+
+```{r TTI vs Demand seg7, fig.width = 11,echo = FALSE, message = FALSE}
+demand_tti_plot(7,'',1)
+```
+
+### Segment 8
+
+```{r TTI vs Demand seg8, fig.width = 11,echo = FALSE, message = FALSE}
+demand_tti_plot(8,'',1)
+```
+
+### Segment 9
+
+```{r TTI vs Demand seg9, fig.width = 11,echo = FALSE, message = FALSE}
+
+demand_tti_plot(9,'',1)
+```
+
+## Prediction
+
+
+
 ```{r develop model, message = FALSE}
 sample_data <- Rel_bin %>%
-  filter(Segment == 9, Delay_type == 'Weather', quantiles == '95%', !is.na(DC)) %>%
+  filter(Segment == 9, Delay_type == 'None', quantiles == '95%', !is.na(DC)) %>%
   select(DC, TTI)
 
-br <- 0.88
+br <- 0.94
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
@@ -762,14 +884,17 @@ Rel_p <- merge(Rel_p,model_nls %>% select(Delay_type, Quantiles = quantiles, fit
 
 ```{r prediction plotting fuction, include = FALSE}
 plot_predict <- function(Seg){
+  
   pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x=TTI,y=pred, color=Quantiles))+
-  geom_point()+
-  # scale_x_continuous(breaks = c(1,2,3,4,5))+
-  # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
-  facet_grid(~Delay_type)
-ggplotly(pr)
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
+    # scale_x_continuous(breaks = c(1,2,3,4,5))+
+    # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
+    facet_grid(~Delay_type)
+  ggplotly(pr)
 }
 ```
+
 
 ### Prediction Segment 1
 
@@ -788,6 +913,16 @@ plot_predict(2)
 ```{r plot predict seg3, fig.width=12}
 plot_predict(3)
 ```
+
+```{r}
+Rel_p %>% 
+  filter(Segment == 3) %>%
+  mutate(Diff = round(abs(TTI - pred),2)) %>%
+  select(-pred,everything()) %>%
+  View()
+```
+
+
 
 ### Prediction Segment 4
 
@@ -819,10 +954,9 @@ plot_predict(7)
 plot_predict(8)
 ```
 
-### Prediction Segment 8
-
+### Prediction Segment 9
 ```{r plot predict seg9, fig.width=12}
-plot_predict(8)
+plot_predict(9)
 ```
 
 ## HEATMAP {.tabset .tabset-fade}
@@ -838,7 +972,7 @@ TT_heat <-function(data,seg, model){
            YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
            mod = model,
            TTI = ifelse(mod == TRUE,
-                        pred/(Length/60 * 60),
+                        pred,
                         TT_mean/(Length/60 * 60)),
            TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
                                    ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
