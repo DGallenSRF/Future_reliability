@@ -895,17 +895,28 @@ Rel_p <- Rel_p %>%
          TTI_u = TT_mean/(Length/FF_u * 60),
          Demand_l = ifelse(Density_bin <= Density_cong_l,Hourly_Flow,2*Flow_cong_l - Hourly_Flow),
          DC_l = Demand_l/Flow_cong_l,
-         TTI_l = TT_mean/(Length/FF_l * 60)) %>%
-  select(Delay_type, Quantile_u, Quantile_l, 
-         DC_u, DC_l, Index) %>%
-  nest(-Delay_type, -Quantile_u, -Quantile_l)
-  
+         TTI_l = TT_mean/(Length/FF_l * 60))  
 
-Rel_p <- merge(Rel_p,model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+Rel_p_u <- Rel_p %>% 
+  select(Delay_type, Quantiles = Quantile_u, DC = DC_u, Index) %>%
+  nest(-Delay_type, -Quantiles) %>%
+  merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
   unnest(data,pred)
+
+Rel_p_l <- Rel_p %>% 
+  select(Delay_type, Quantiles = Quantile_l, DC = DC_l, Index) %>%
+  nest(-Delay_type, -Quantiles) %>%
+  merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  as.tibble() %>%
+  mutate(pred = map2(fit,data,predict)) %>%
+  as.tibble() %>%
+  unnest(data,pred)
+
+Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred)) %>%
+  merge(select(Rel_p_l, Index, pred_l = pred))
 
 ```
 
