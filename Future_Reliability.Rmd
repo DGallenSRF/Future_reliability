@@ -890,12 +890,12 @@ Rel_p <- merge(Rel_p,
 table(is.na(Rel_p$Flow_cong))
 
 Rel_p <- Rel_p %>%
-  mutate(Demand_u  = ifelse(Density_bin <= Density_cong_u,Hourly_Flow,2*Flow_cong_u - Hourly_Flow),
-         DC_u = Demand_u/Flow_cong_u,
-         TTI_u = TT_mean/(Length/FF_u * 60),
-         Demand_l = ifelse(Density_bin <= Density_cong_l,Hourly_Flow,2*Flow_cong_l - Hourly_Flow),
-         DC_l = Demand_l/Flow_cong_l,
-         TTI_l = TT_mean/(Length/FF_l * 60))  
+  mutate(Demand_u  = ifelse(Density_bin <= Density_cong_u, Hourly_Flow, 2 * Flow_cong_u - Hourly_Flow),
+         DC_u = Demand_u / Flow_cong_u,
+         TTI_u = TT_mean / (Length/FF_u * 60),
+         Demand_l = ifelse(Density_bin <= Density_cong_l, Hourly_Flow, 2 * Flow_cong_l - Hourly_Flow),
+         DC_l = Demand_l / Flow_cong_l,
+         TTI_l = TT_mean / (Length/FF_l * 60))  
 
 Rel_p_u <- Rel_p %>% 
   select(Delay_type, Quantiles = Quantile_u, DC = DC_u, Index) %>%
@@ -915,8 +915,21 @@ Rel_p_l <- Rel_p %>%
   as.tibble() %>%
   unnest(data,pred)
 
-Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred)) %>%
-  merge(select(Rel_p_l, Index, pred_l = pred))
+Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
+  merge(select(Rel_p_l, Index, pred_l = pred), all.x = TRUE) %>%
+  mutate(TT_quantile_l = ifelse(is.na(TT_quantile_l),
+                                TT_quantile_u, 
+                                TT_quantile_l),
+         TT_quantile_u = ifelse(is.na(TT_quantile_u), 
+                                TT_quantile_l, 
+                                TT_quantile_u),
+         Diff = ifelse(TT_quantile_u == TT_quantile_l,
+                       0,
+                       (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
+         TTI = ifelse(is.na(FF_l),
+                      TT_mean / (Length / FF_u * 60),
+                      TT_mean / (Length / (FF_l * (1+Diff)) * 60)),
+         pred_final = ifelse(is.na(pred_l), pred_u, pred_l * (1+Diff)))
 
 ```
 
@@ -925,7 +938,7 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred)) %>%
 ```{r prediction plotting fuction, include = FALSE}
 plot_predict <- function(Seg){
   
-  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x=TTI,y=pred, color=Quantiles))+
+  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x= TTI,y=pred_final))+
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
     # scale_x_continuous(breaks = c(1,2,3,4,5))+
@@ -1007,7 +1020,7 @@ TT_heat <-function(data,seg, model){
   
   heat <- data %>%
     filter(Segment == seg) %>% 
-    select(DateTime, TT_mean, Length, pred) %>% 
+    select(DateTime, TT_mean, Length, pred = pred_final) %>% 
     mutate(HourMin = format(DateTime, '%H:%M'),
            YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
            mod = model,
@@ -1015,14 +1028,22 @@ TT_heat <-function(data,seg, model){
                         pred,
                         TT_mean/(Length/60 * 60)),
            TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
-                                   ifelse(TTI <= 4.0 & TTI > 3.5,'3.5 TTI - 4.0 TTI',
-                                          ifelse(TTI <= 3.5 & TTI > 3.0,'3.0 TTI - 3.5 TTI',
-                                                 ifelse(TTI <= 3.0 & TTI > 2.5,'2.5 TTI - 3.0 TTI',
-                                                        ifelse(TTI <= 2.5 & TTI > 2.0,'2.0 TTI - 2.5 TTI',
-                                                               ifelse(TTI <= 2.0 & TTI > 1.5,'1.5 TTI - 2.0 TTI',
-                                                                      ifelse(TTI <= 1.5 & TTI > 1.25,'45 mph TT - 1.5 TTI',
-                                                                             ifelse(TTI <= 1.25 & TTI > 1.0 ,'Speed Limit TT - 45 mph TT',
-                                                                                    ifelse(TTI <= 1.0 , '<Speed Limit TT', NA))))))))),
+                                   ifelse(TTI <= 4.0 & TTI > 3.5,
+                                          '3.5 TTI - 4.0 TTI',
+                                          ifelse(TTI <= 3.5 & TTI > 3.0,
+                                                 '3.0 TTI - 3.5 TTI',
+                                                 ifelse(TTI <= 3.0 & TTI > 2.5,
+                                                        '2.5 TTI - 3.0 TTI',
+                                                        ifelse(TTI <= 2.5 & TTI > 2.0,
+                                                               '2.0 TTI - 2.5 TTI',
+                                                               ifelse(TTI <= 2.0 & TTI > 1.5,
+                                                                      '1.5 TTI - 2.0 TTI',
+                                                                      ifelse(TTI <= 1.5 & TTI > 1.25,
+                                                                             '45 mph TT - 1.5 TTI',
+                                                                             ifelse(TTI <= 1.25 & TTI > 1.0 ,
+                                                                                    'Speed Limit TT - 45 mph TT',
+                                                                                    ifelse(TTI <= 1.0 ,
+                                                                                           '<Speed Limit TT', NA))))))))),
                             levels = (c('>4.0 TTI',
                                         '3.5 TTI - 4.0 TTI',
                                         '3.0 TTI - 3.5 TTI',
@@ -1032,7 +1053,7 @@ TT_heat <-function(data,seg, model){
                                         '45 mph TT - 1.5 TTI',
                                         'Speed Limit TT - 45 mph TT',
                                         '<Speed Limit TT')))) 
-
+  
   
 library(RColorBrewer)
 myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
