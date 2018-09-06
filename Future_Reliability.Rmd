@@ -896,6 +896,8 @@ Rel_p <- Rel_p %>%
          Demand_l = ifelse(Density_bin <= Density_cong_l,Hourly_Flow,2*Flow_cong_l - Hourly_Flow),
          DC_l = Demand_l/Flow_cong_l,
          TTI_l = TT_mean/(Length/FF_l * 60)) %>%
+  select(Delay_type, Quantile_u, Quantile_l, 
+         DC_u, DC_l, Index) %>%
   nest(-Delay_type, -Quantile_u, -Quantile_l)
   
 
