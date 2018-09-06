@@ -32,7 +32,6 @@ dir()
 ```
 
 
-
 ## LOAD DATA 
 
 
@@ -176,7 +175,7 @@ Rel %>%
 ```
 
 
-``` {r bin data, echo=FALSE, messages = FALSE, results = 'asis'}
+```{r bin data, echo=FALSE, messages = FALSE}
 
 
 bins <- c(seq(floor(min(Rel$Dens)),50,2),60,70,80,90,100,125,150,200,300,400,480)
@@ -198,6 +197,7 @@ d <- Rel %>%
 d
 
 Rel_spare <- Rel
+
 ```
 
 
@@ -504,7 +504,7 @@ Below are the Flow vs Density plots for each condition.
 
 ```{r load density flow manual table, include = FALSE}
 
-dens_flow_tab <- read.csv('./congestion density flow table.csv')
+dens_flow_tab <- read.csv('./Future/congestion density flow table.csv')
 dens_flow_tab <- dcast(dens_flow_tab, Segment + quantiles + Delay_type + Axis ~ Measure, value.var = 'Value') %>%
   select(Density_cong = Density, Flow_cong = Flow, everything())
 head(dens_flow_tab)
@@ -842,34 +842,61 @@ Rel_q <- Rel_p %>%
   select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
   data.table()
 
-TT_q <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
-setkey(TT_q, NULL)
-setkey(TT_q, Segment, Delay_type, Density_bin, TT_q)
+TT_q_table <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
+setkey(TT_q_table, NULL)
+setkey(TT_q_table, Segment, Delay_type, Density_bin, TT_q)
 
-join_TT <- TT_q[Rel_q, roll = 'nearest', .(TT_quantile = x.TT_q,
-                                           TT_mean = i.TT_q,
-                                           FF_quantile = FF_quantile,
-                                           FF = FF_quantile,
+join_TT <- TT_q_table[Rel_q, roll = -Inf, .(TT_quantile_u = x.TT_q,
+                                            TT_mean = i.TT_q,
+                                            Delay_type = Delay_type,
+                                            Index = Index,
+                                            Segment = Segment,
+                                            Density_bin = Density_bin,
+                                            FF_u = FF_quantile,
+                                            Quantile_u = quantiles,
+                                            Flow_cong_u = Flow_cong,
+                                            Density_cong_u = Density_cong)] %>%
+  select(Segment, Delay_type, Density_bin, TT_mean, 
+         TT_quantile_u, Quantile_u, Flow_cong_u, Density_cong_u, FF_u, Index) %>%
+  data.table()
+
+join_TT <- TT_q_table[join_TT, roll = T, .(TT_quantile_l = x.TT_q,
+                                           TT_quantile_u = i.TT_quantile_u,
+                                           TT_mean = TT_mean,
+                                           FF_l = FF_quantile,
+                                           FF_u = FF_u,
                                            Delay_type = Delay_type,
-                                           Quantiles = quantiles,
-                                           Flow_cong = Flow_cong,
-                                           Density_cong = Density_cong,
+                                           Quantile_u = Quantile_u,
+                                           Quantile_l = quantiles,
+                                           Flow_cong_u = Flow_cong_u,
+                                           Density_cong_u = Density_cong_u,
+                                           Flow_cong_l = Flow_cong,
+                                           Density_cong_l = Density_cong,
                                            Index = Index,
-                                           br = br)]
+                                           br = br,
+                                           Segment = Segment,
+                                           Density_bin = Density_bin)]
+
+
 head(join_TT)
 join_TT <- join_TT[!duplicated(join_TT$Index),]
 
 Rel_p <- merge(Rel_p, 
-                 join_TT[,c('Index','TT_quantile','Quantiles','Flow_cong','Density_cong','FF','br')],
+                 join_TT[,c('Index','TT_quantile_u', 'TT_quantile_l',
+                            'Quantile_u','Quantile_l','Flow_cong_u','Density_cong_u','FF_u',
+                            'Flow_cong_l','Density_cong_l','FF_l','br')],
                  by = 'Index', all.x=TRUE)
 
 table(is.na(Rel_p$Flow_cong))
 
 Rel_p <- Rel_p %>%
-  mutate(Demand  = ifelse(Density_bin <= Density_cong,Hourly_Flow,2*Flow_cong - Hourly_Flow),
-         DC = Demand/Flow_cong,
-         TTI = TT_mean/(Length/FF * 60)) %>%
-  nest(-Delay_type, -Quantiles)
+  mutate(Demand_u  = ifelse(Density_bin <= Density_cong_u,Hourly_Flow,2*Flow_cong_u - Hourly_Flow),
+         DC_u = Demand_u/Flow_cong_u,
+         TTI_u = TT_mean/(Length/FF_u * 60),
+         Demand_l = ifelse(Density_bin <= Density_cong_l,Hourly_Flow,2*Flow_cong_l - Hourly_Flow),
+         DC_l = Demand_l/Flow_cong_l,
+         TTI_l = TT_mean/(Length/FF_l * 60)) %>%
+  nest(-Delay_type, -Quantile_u, -Quantile_l)
   
 
 Rel_p <- merge(Rel_p,model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
