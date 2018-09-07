@@ -550,22 +550,7 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
 }
 ```
 
-```{r}
-
-dat <- dens_flow_tab[dens_flow_tab$Segment == 1,]
-
-ggplot()+
-  geom_point(data=Rel_bin, aes(x = Density_bin, y = Flow, color = quantiles)) +
-  geom_segment(data = dat, aes(x = Density_cong, y = Axis, xend = Density_cong, yend = Flow_cong, color = quantiles)) +
-    geom_segment(data = dat, aes(x = Axis, y = Flow_cong, xend = Density_cong, yend = Flow_cong, color = quantiles) ) +
-  # geom_smooth(span=0.75,se=F)+
-  facet_grid(~Delay_type, scales = 'free')+
-  # scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
-  # scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
-  # theme(legend.position=legend)+
-  ggtitle(paste('Segment:',1))
-
-```
+Vertical and horizontal dashed lines indicate the Congested Density and Flow points. This values were manually determined by visually inspecting these plots. 
 
 ### Segment 1
 
@@ -618,22 +603,22 @@ dens_flow_plot(5,'none', bin = TRUE)
 
 ### Segment 6
 
-```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
-
-dens_flow_plot(6,'', bin = TRUE)
-```
-
 ```{r filter segment 6}
 Rel_bin <- Rel_bin %>%
   # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
   filter(!(Segment == 6 & Density_bin > 59))
 ```
 
+```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
+
+dens_flow_plot(6,'', bin = TRUE)
+```
+
 ### Segment 7
 
 ```{r Density vs Flow seg7, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(7,'none', bin = TRUE)
+dens_flow_plot(7,'', bin = TRUE)
 ```
 
 ```{r filter segment 7}
@@ -643,7 +628,7 @@ dens_flow_plot(7,'none', bin = TRUE)
 ### Segment 8
 
 ```{r Density vs Flow seg8, fig.width = 11,echo = FALSE, message = FALSE}
-dens_flow_plot(8,'none', bin = TRUE)
+dens_flow_plot(8,'', bin = TRUE)
 ```
 
 ```{r filter segment 8}
@@ -652,12 +637,7 @@ dens_flow_plot(8,'none', bin = TRUE)
 
 ### Segment 9
 
-```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
-
-dens_flow_plot(9,'', bin = TRUE)
-```
-
-```{r filter segment 9}
+```{r filter segment 9, echo = FALSE, message = FALSE}
 
 Rel_bin <- Rel_bin %>%
   filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 59)) %>%
@@ -665,6 +645,10 @@ Rel_bin <- Rel_bin %>%
 
 ```
 
+```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
+
+dens_flow_plot(9,'', bin = TRUE)
+```
 
 ## DEMAND
 
@@ -692,8 +676,9 @@ ggplotly(g, tooltip = 'text')
   
 ```
 
+Calculate Demand and DC.
 
-```{r calculate Demand, include=FALSE}
+```{r calculate Demand}
 
 Rel_bin <- merge(Rel_bin,dens_flow_tab,
                  by = c('Delay_type','quantiles', 'Segment')) %>%
@@ -715,8 +700,8 @@ demand_tti_plot <- function(seg,legend = '', sp = 1){
   tt <- ggplot()+
     geom_point(data=Rel_bin[Rel_bin$Segment == seg,],
                aes(x= Demand,y = TTI, color= quantiles))+
-    geom_smooth(data=Rel_bin[Rel_bin$Segment == seg,],
-                aes(x= Demand,y = TTI, color= quantiles),span=sp,se=F)+
+    # geom_smooth(data=Rel_bin[Rel_bin$Segment == seg,],
+    #             aes(x= Demand,y = TTI, color= quantiles),span=sp,se=F)+
     facet_grid(~Delay_type, scales = 'free')+
     theme(legend.position=legend)+
     ggtitle(paste('Segment:',seg))
@@ -792,15 +777,16 @@ demand_tti_plot(9,'',1)
 ## Prediction
 
 
+The below code is used to develop the model based on the relationship between TTI and DC. 
 
 ```{r develop model, message = FALSE}
 
-q <- 95
-br <- 0.96
+q <- 50
+br <- 0.95
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_bin %>%
-  filter(Segment == 9, Delay_type == 'Weather', quantiles == q, !is.na(DC)) %>%
+  filter(Segment == 3, Delay_type == 'None', quantiles == q, !is.na(DC)) %>%
   select(DC, TTI)
 
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
@@ -930,13 +916,15 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
          Diff = ifelse(TT_quantile_u == TT_quantile_l,
                        0,
                        (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
-         # TTI = ifelse(is.na(FF_l),
-         #              TT_mean / (Length / FF_u * 60),
-         #              TT_mean / (Length / (FF_l * (1+Diff)) * 60)),
-         TTI = TT_mean/(Length/60 * 60),
+         TTI_u = TT_mean / (Length / FF_u * 60),
+         TTI_l = TT_mean / (Length / FF_l * 60),
+         TTI = ifelse(is.na(TTI_l),
+                           TTI_u,
+                           TTI_l + (TTI_u - TTI_l) * Diff),
+         # TTI = TT_mean/(Length/60 * 60),
          pred_final = ifelse(is.na(pred_l), 
                              pred_u,
-                             pred_l + (pred_u - pred_l)*Diff))
+                             pred_l + (pred_u - pred_l) * Diff))
 
 ```
 
@@ -972,14 +960,6 @@ plot_predict(2)
 
 ```{r plot predict seg3, fig.width=12}
 plot_predict(3)
-```
-
-```{r}
-Rel_p %>% 
-  filter(Segment == 3) %>%
-  mutate(Diff = round(abs(TTI - pred),2)) %>%
-  select(-pred,everything()) %>%
-  View()
 ```
 
 
@@ -1019,13 +999,6 @@ plot_predict(9)
 ```
 
 ## HEATMAP {.tabset .tabset-fade}
-
-```{r}
-x <- Rel_p %>% filter(Segment == 1) %>% select(pred_final, TTI) 
-as.data.frame(table(cut(x$pred_final, breaks=seq(0,5, by=0.1))))
-write.csv(x,'dat.csv', row.names = FALSE)
-getwd()
-```
 
 
 ```{r heatmap,include = FALSE, message = FALSE}
