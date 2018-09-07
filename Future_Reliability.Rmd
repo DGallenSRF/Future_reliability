@@ -795,11 +795,12 @@ demand_tti_plot(9,'',1)
 
 ```{r develop model, message = FALSE}
 
-q <- '75%'
-br <- 0.94
+q <- 95
+br <- 0.96
+q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_bin %>%
-  filter(Segment == 3, Delay_type == 'None', quantiles == q, !is.na(DC)) %>%
+  filter(Segment == 9, Delay_type == 'Weather', quantiles == q, !is.na(DC)) %>%
   select(DC, TTI)
 
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
@@ -932,8 +933,10 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
          # TTI = ifelse(is.na(FF_l),
          #              TT_mean / (Length / FF_u * 60),
          #              TT_mean / (Length / (FF_l * (1+Diff)) * 60)),
-         TTI = TT_mean / (Length / 60)
-         pred_final = ifelse(is.na(pred_l), pred_u, pred_l * (1+Diff)))
+         TTI = TT_mean/(Length/60 * 60),
+         pred_final = ifelse(is.na(pred_l), 
+                             pred_u,
+                             pred_l + (pred_u - pred_l)*Diff))
 
 ```
 
@@ -942,7 +945,7 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
 ```{r prediction plotting fuction, include = FALSE}
 plot_predict <- function(Seg){
   
-  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x= TTI,y=pred_final))+
+  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x= TTI,y=pred_final, color = Quantile_u))+
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
     # scale_x_continuous(breaks = c(1,2,3,4,5))+
@@ -978,7 +981,6 @@ Rel_p %>%
   select(-pred,everything()) %>%
   View()
 ```
-
 
 
 ### Prediction Segment 4
@@ -1018,19 +1020,27 @@ plot_predict(9)
 
 ## HEATMAP {.tabset .tabset-fade}
 
+```{r}
+x <- Rel_p %>% filter(Segment == 1) %>% select(pred_final, TTI) 
+as.data.frame(table(cut(x$pred_final, breaks=seq(0,5, by=0.1))))
+write.csv(x,'dat.csv', row.names = FALSE)
+getwd()
+```
+
+
 ```{r heatmap,include = FALSE, message = FALSE}
 
 TT_heat <-function(data,seg, model){ 
   
   heat <- data %>%
     filter(Segment == seg) %>% 
-    select(DateTime, TTI, Length, pred = pred_final) %>% 
+    select(DateTime, TT_mean, Length, pred = pred_final) %>% 
     mutate(HourMin = format(DateTime, '%H:%M'),
            YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
            mod = model,
            TTI = ifelse(mod == TRUE,
                         pred,
-                        TT_mean/(Length/60 * 60))),
+                        TT_mean/(Length/60 * 60)),
            TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
                                    ifelse(TTI <= 4.0 & TTI > 3.5,
                                           '3.5 TTI - 4.0 TTI',
