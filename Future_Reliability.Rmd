@@ -794,11 +794,14 @@ demand_tti_plot(9,'',1)
 
 
 ```{r develop model, message = FALSE}
+
+q <- '75%'
+br <- 0.94
+
 sample_data <- Rel_bin %>%
-  filter(Segment == 9, Delay_type == 'None', quantiles == '95%', !is.na(DC)) %>%
+  filter(Segment == 3, Delay_type == 'None', quantiles == q, !is.na(DC)) %>%
   select(DC, TTI)
 
-br <- 0.94
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
@@ -808,8 +811,6 @@ mu <- 1.5
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
-# pred <- data.frame(DC = 1.44)
-# predict(sample_nls,pred)
 ```
 
 
@@ -822,11 +823,13 @@ func_exp <- function(x) {
     data = x)
 }
 
-
+br <- 0.94
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
+b <- 3
+mu <- 1.5
 
 model_nls <- Rel_bin %>%
-  nest(-Delay_type,-quantiles) %>%
+  nest(-Segment, -Delay_type,-quantiles) %>%
   mutate(fit = purrr::map(data, func_exp)) 
 
 breaks <- read.csv('./Future/model_breaks.csv')
@@ -842,7 +845,7 @@ Rel_q <- Rel_p %>%
   select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
   data.table()
 
-TT_q_table <- data.table(Rel_bin) %>% select(-quantiles,TT_q = TT_quantile, quantiles)
+TT_q_table <- data.table(Rel_bin) %>% select(Segment, Delay_type, Density_bin, TT_q = TT_quantile, quantiles, FF_quantile, Flow_cong, Density_cong)
 setkey(TT_q_table, NULL)
 setkey(TT_q_table, Segment, Delay_type, Density_bin, TT_q)
 
@@ -898,18 +901,18 @@ Rel_p <- Rel_p %>%
          TTI_l = TT_mean / (Length/FF_l * 60))  
 
 Rel_p_u <- Rel_p %>% 
-  select(Delay_type, Quantiles = Quantile_u, DC = DC_u, Index) %>%
-  nest(-Delay_type, -Quantiles) %>%
-  merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_u, DC = DC_u, Index) %>%
+  nest(-Segment, -Delay_type, -Quantiles) %>%
+  merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
   unnest(data,pred)
 
 Rel_p_l <- Rel_p %>% 
-  select(Delay_type, Quantiles = Quantile_l, DC = DC_l, Index) %>%
-  nest(-Delay_type, -Quantiles) %>%
-  merge(model_nls %>% select(Delay_type, Quantiles = quantiles, fit)) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_l, DC = DC_l, Index) %>%
+  nest(-Segment, -Delay_type, -Quantiles) %>%
+  merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
@@ -926,9 +929,10 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
          Diff = ifelse(TT_quantile_u == TT_quantile_l,
                        0,
                        (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
-         TTI = ifelse(is.na(FF_l),
-                      TT_mean / (Length / FF_u * 60),
-                      TT_mean / (Length / (FF_l * (1+Diff)) * 60)),
+         # TTI = ifelse(is.na(FF_l),
+         #              TT_mean / (Length / FF_u * 60),
+         #              TT_mean / (Length / (FF_l * (1+Diff)) * 60)),
+         TTI = TT_mean / (Length / 60)
          pred_final = ifelse(is.na(pred_l), pred_u, pred_l * (1+Diff)))
 
 ```
@@ -1020,13 +1024,13 @@ TT_heat <-function(data,seg, model){
   
   heat <- data %>%
     filter(Segment == seg) %>% 
-    select(DateTime, TT_mean, Length, pred = pred_final) %>% 
+    select(DateTime, TTI, Length, pred = pred_final) %>% 
     mutate(HourMin = format(DateTime, '%H:%M'),
            YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
            mod = model,
            TTI = ifelse(mod == TRUE,
                         pred,
-                        TT_mean/(Length/60 * 60)),
+                        TT_mean/(Length/60 * 60))),
            TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
                                    ifelse(TTI <= 4.0 & TTI > 3.5,
                                           '3.5 TTI - 4.0 TTI',
