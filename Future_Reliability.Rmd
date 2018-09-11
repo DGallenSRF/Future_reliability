@@ -91,6 +91,7 @@ Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
   select(Segment = Segment_No, Lanes, Length) %>%
   arrange(Segment)
 
+Segments_494[Segments_494$Segment == 3,"Lanes"] <- 3
 
 Data_494 <- merge(Data_494, Segments_494, by = 'Segment')
 
@@ -208,6 +209,8 @@ We will break down the dataset into each delay type and then further into percen
 ```{r percentiles, echo=FALSE}
 
 p <- c(.05,.1,0.25,0.5,0.75,0.9,.95)
+
+# p <- c(.05,.1, 0.2, .3, .4, .5, .6, .7, .8, .9, .95)
 
 # p <- seq(0.05,0.95,0.05)
 ```
@@ -386,6 +389,7 @@ Rel_bin_preFilter <- Rel_bin
 Rel_bin <- Rel_bin %>%
   filter(!(Segment == 1 & Density_bin > 199)) %>%
   filter(!(Segment == 1 & Delay_type == 'None' & Density_bin > 100)) %>%
+  filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 89)) %>%
   filter(!(Segment == 1 & Delay_type == 'Crash' & Density_bin > 45))
 
 ```
@@ -445,7 +449,7 @@ dens_tti_plot(5,'none',1)
 
 ```{r seg6 filter}
 Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 6 & Delay_type == 'None' & Density_bin > 70)) 
+  filter(!(Segment == 6 & Density_bin > 59))
 ```
 
 ```{r Density vs TT seg6, fig.width = 11,echo = FALSE, message = FALSE}
@@ -487,8 +491,10 @@ dens_tti_plot(8,'none',1)
 ```{r seg9 filter}
 Rel_bin <- Rel_bin %>%
   filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 40)) %>%
+  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin == 38)) %>%
   filter(!(Segment == 9 & Delay_type == 'None' & Density_bin > 80)) %>%
   filter(!(Segment == 9 & Delay_type == 'Crash' & Density_bin > 38))
+
 
 ```
 
@@ -518,10 +524,10 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
   
   flow_dens <- 
   if(is.na(bin)){
-    dat <- Rel[Rel$Segment == seg,]
+    dat <- Rel_p[Rel_p$Segment == seg,]
     plot_x <- 'Dens'
     plot_y <- 'Hourly_Flow'
-    q <- 'Quantiles'
+    q <- 'Quantile_u'
   } else {
     dat <- Rel_bin[Rel_bin$Segment == seg,]
     plot_x <- 'Density_bin'
@@ -531,11 +537,11 @@ dens_flow_plot <- function(seg,legend='', bin = NA){
   
   tt <- ggplot()+
     geom_point(data=dat, aes_string(x= plot_x,y = plot_y, color= q))+
-    geom_segment(data = dens_flow_data, 
+    geom_segment(data = dens_flow_data,
                  aes(x = Density_cong, y = Axis,
                      xend = Density_cong, yend = Flow_cong,
                      color = quantiles), linetype = 'dashed') +
-    geom_segment(data = dens_flow_data, 
+    geom_segment(data = dens_flow_data,
                  aes(x = Axis, y = Flow_cong,
                      xend = Density_cong, yend = Flow_cong,
                      color = quantiles), linetype = 'dashed') +
@@ -575,7 +581,7 @@ dens_flow_plot(2,'none', bin = TRUE)
 
 ```{r Density vs Flow seg3, fig.width = 11,echo = FALSE, message = FALSE}
 
-dens_flow_plot(3,'none', bin = TRUE)
+dens_flow_plot(3,'', bin = TRUE)
 ```
 
 ```{r filter segment 3}
@@ -604,9 +610,7 @@ dens_flow_plot(5,'none', bin = TRUE)
 ### Segment 6
 
 ```{r filter segment 6}
-Rel_bin <- Rel_bin %>%
-  # filter(!(Segment == 1 & Delay_type == 'Weather' & Density_bin > 300)) %>%
-  filter(!(Segment == 6 & Density_bin > 59))
+
 ```
 
 ```{r Density vs Flow seg6, fig.width = 11,echo = FALSE, message = FALSE}
@@ -638,11 +642,6 @@ dens_flow_plot(8,'', bin = TRUE)
 ### Segment 9
 
 ```{r filter segment 9, echo = FALSE, message = FALSE}
-
-Rel_bin <- Rel_bin %>%
-  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin > 59)) %>%
-  filter(!(Segment == 9 & Delay_type == 'Weather' & Density_bin == 38)) 
-
 ```
 
 ```{r Density vs Flow seg9, fig.width = 11,echo = FALSE, message = FALSE}
@@ -680,7 +679,7 @@ Calculate Demand and DC.
 
 ```{r calculate Demand}
 
-Rel_bin <- merge(Rel_bin,dens_flow_tab,
+Rel_bin <- merge(Rel_bin, dens_flow_tab,
                  by = c('Delay_type','quantiles', 'Segment')) %>%
   mutate(Demand = ifelse(Density_bin <= Density_cong, Flow,
                          ifelse(Density_bin >= Density_cong & Flow <= Flow_cong,
@@ -781,8 +780,8 @@ The below code is used to develop the model based on the relationship between TT
 
 ```{r develop model, message = FALSE}
 
-q <- 50
-br <- 0.95
+q <-     50
+br <-   .93
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_bin %>%
@@ -792,12 +791,14 @@ sample_data <- Rel_bin %>%
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
+
 # preview(formulaExp, data = sample_data, start = list(mu, b))
 # formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
+# predict(sample_nls, data.frame(DC = 1.22))
 ```
 
 
@@ -880,7 +881,18 @@ Rel_p <- merge(Rel_p,
 table(is.na(Rel_p$Flow_cong))
 
 Rel_p <- Rel_p %>%
-  mutate(Demand_u  = ifelse(Density_bin <= Density_cong_u, Hourly_Flow, 2 * Flow_cong_u - Hourly_Flow),
+  mutate(TT_quantile_l = ifelse(is.na(TT_quantile_l),
+                                TT_quantile_u, 
+                                TT_quantile_l),
+         TT_quantile_u = ifelse(is.na(TT_quantile_u), 
+                                TT_quantile_l, 
+                                TT_quantile_u),
+         Diff = ifelse(TT_quantile_u == TT_quantile_l,
+                       0,
+                       (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
+         
+         
+         Density_Diff = ifelse(Density_bin <= Density_cong_u, Hourly_Flow, 2 * Flow_cong_u - Hourly_Flow),
          DC_u = Demand_u / Flow_cong_u,
          TTI_u = TT_mean / (Length/FF_u * 60),
          Demand_l = ifelse(Density_bin <= Density_cong_l, Hourly_Flow, 2 * Flow_cong_l - Hourly_Flow),
@@ -925,6 +937,8 @@ Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
          pred_final = ifelse(is.na(pred_l), 
                              pred_u,
                              pred_l + (pred_u - pred_l) * Diff))
+
+rm(Rel_p_l, Rel_p_u, join_TT, Rel_q, TT_q_table)
 
 ```
 
