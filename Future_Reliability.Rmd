@@ -92,6 +92,7 @@ Segments_494 <-  Seg %>%  filter(!is.na(Length)) %>%
   arrange(Segment)
 
 Segments_494[Segments_494$Segment == 3,"Lanes"] <- 3
+Segments_494[Segments_494$Segment == 6,"Lanes"] <- 3
 
 Data_494 <- merge(Data_494, Segments_494, by = 'Segment')
 
@@ -453,7 +454,7 @@ Rel_bin <- Rel_bin %>%
 ```
 
 ```{r Density vs TT seg6, fig.width = 11,echo = FALSE, message = FALSE}
-dens_tti_plot(6,'none',1)
+dens_tti_plot(6,'',1)
 ```
 
 ### Segment 7
@@ -649,6 +650,61 @@ dens_flow_plot(8,'', bin = TRUE)
 dens_flow_plot(9,'', bin = TRUE)
 ```
 
+
+
+
+## FLOW vs TT {.tabset .tabset-fade}
+
+
+```{r dens_flow_plot, include=FALSE}
+
+TT_flow_plot <- function(seg,legend='', bin = NA){
+  
+  TT_flow_data <- filter(dens_flow_tab, Segment == seg)
+  
+  flow_dens <- 
+  if(is.na(bin)){
+    dat <- Rel_p[Rel_p$Segment == seg,]
+    plot_x <- 'TT_mean'
+    plot_y <- 'Hourly_Flow'
+    q <- 'Quantile_l'
+  } else {
+    dat <- Rel_bin[Rel_bin$Segment == seg,]
+    plot_x <- 'TT_quantile'
+    plot_y <- 'Flow'
+    q <- 'quantiles'
+  }
+  
+  tt <- ggplot()+
+    geom_point(data=dat, aes_string(x= plot_x,y = plot_y, color= q))+
+    # geom_smooth(span=0.75,se=F)+
+    facet_grid(~Delay_type, scales = 'free')+
+    # scale_y_continuous(minor_breaks = seq(0, 4000,50), breaks = seq(0,4000,100))+
+    # scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
+    theme(legend.position=legend)+
+    ggtitle(paste('Segment:',seg))
+  ggplotly(tt)
+  
+}
+```
+
+### Segment 3
+
+```{r TT_flow seg6, fig.width = 11, echo = FALSE, message = FALSE}
+TT_flow_plot(3,'',bin = NA)
+
+```
+
+
+### Segment 6
+
+```{r TT_flow seg6, fig.width = 11, echo = FALSE, message = FALSE}
+TT_flow_plot(6,'',bin = NA)
+
+group_by(Rel_p, Segment) %>% summarise(max = sd(Dens))
+```
+
+
 ## DEMAND
 
 ```{r R^2, include=FALSE}
@@ -780,13 +836,17 @@ The below code is used to develop the model based on the relationship between TT
 
 ```{r develop model, message = FALSE}
 
-q <-     50
-br <-   .93
+q <-     95
+br <-    0.82
 q <- paste(q, '%', sep ='')
 
-sample_data <- Rel_bin %>%
-  filter(Segment == 3, Delay_type == 'None', quantiles == q, !is.na(DC)) %>%
+sample_data <- Rel_p %>%
+  filter(Segment == 3, Delay_type == 'Weather', Quantile_l == q, !is.na(DC)) %>%
   select(DC, TTI)
+
+# sample_data <- Rel_bin %>%
+#   filter(Segment == 3, Delay_type == 'Crash', quantiles == q, !is.na(DC)) %>%
+#   select(DC, TTI)
 
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
@@ -798,7 +858,7 @@ mu <- 1.5
 sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
 plotfit(sample_nls, smooth = TRUE)
 
-# predict(sample_nls, data.frame(DC = 1.22))
+# predict(sample_nls, data.frame(DC = 1.4))
 ```
 
 
@@ -811,13 +871,13 @@ func_exp <- function(x) {
     data = x)
 }
 
-br <- 0.94
+
 formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
 
-model_nls <- Rel_bin %>%
-  nest(-Segment, -Delay_type,-quantiles) %>%
+model_nls <- Rel_p %>%
+  nest(-Segment, -Delay_type,-Quantile_l) %>%
   mutate(fit = purrr::map(data, func_exp)) 
 
 breaks <- read.csv('./Future/model_breaks.csv')
@@ -890,17 +950,27 @@ Rel_p <- Rel_p %>%
          Diff = ifelse(TT_quantile_u == TT_quantile_l,
                        0,
                        (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
-         
-         
-         Density_Diff = ifelse(Density_bin <= Density_cong_u, Hourly_Flow, 2 * Flow_cong_u - Hourly_Flow),
-         DC_u = Demand_u / Flow_cong_u,
-         TTI_u = TT_mean / (Length/FF_u * 60),
-         Demand_l = ifelse(Density_bin <= Density_cong_l, Hourly_Flow, 2 * Flow_cong_l - Hourly_Flow),
-         DC_l = Demand_l / Flow_cong_l,
-         TTI_l = TT_mean / (Length/FF_l * 60))  
+         Density_cong = ifelse(is.na(Density_cong_l),
+                               Density_cong_u, 
+                               ifelse(is.na(Density_cong_u),
+                                      Density_cong_l,
+                                      Density_cong_l + (Density_cong_u - Density_cong_l) * Diff)),
+         Flow_cong = ifelse(is.na(Flow_cong_l),
+                            Flow_cong_u,
+                            ifelse(is.na(Flow_cong_u),
+                                   Flow_cong_l,
+                                   Flow_cong_l + (Flow_cong_u - Flow_cong_l) * Diff)),
+         Demand = ifelse(Density_bin <= Density_cong, Hourly_Flow, 2 * Flow_cong - Hourly_Flow),
+         DC = Demand / Flow_cong,
+         FF = ifelse(is.na(FF_l),
+                     FF_u,
+                     ifelse(is.na(FF_u),
+                            FF_l,
+                            FF_l + (FF_u - FF_l) * Diff)),
+         TTI = TT_mean / (Length/FF * 60))
 
 Rel_p_u <- Rel_p %>% 
-  select(Segment, Delay_type, Quantiles = Quantile_u, DC = DC_u, Index) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_u, DC, Index) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
   merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
@@ -909,7 +979,7 @@ Rel_p_u <- Rel_p %>%
   unnest(data,pred)
 
 Rel_p_l <- Rel_p %>% 
-  select(Segment, Delay_type, Quantiles = Quantile_l, DC = DC_l, Index) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_l, DC, Index) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
   merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
@@ -919,24 +989,12 @@ Rel_p_l <- Rel_p %>%
 
 Rel_p <- merge(Rel_p, select(Rel_p_u, Index, pred_u = pred), all.x = TRUE) %>%
   merge(select(Rel_p_l, Index, pred_l = pred), all.x = TRUE) %>%
-  mutate(TT_quantile_l = ifelse(is.na(TT_quantile_l),
-                                TT_quantile_u, 
-                                TT_quantile_l),
-         TT_quantile_u = ifelse(is.na(TT_quantile_u), 
-                                TT_quantile_l, 
-                                TT_quantile_u),
-         Diff = ifelse(TT_quantile_u == TT_quantile_l,
-                       0,
-                       (TT_mean-TT_quantile_l)/(TT_quantile_u - TT_quantile_l)),
-         TTI_u = TT_mean / (Length / FF_u * 60),
-         TTI_l = TT_mean / (Length / FF_l * 60),
-         TTI = ifelse(is.na(TTI_l),
-                           TTI_u,
-                           TTI_l + (TTI_u - TTI_l) * Diff),
-         # TTI = TT_mean/(Length/60 * 60),
-         pred_final = ifelse(is.na(pred_l), 
+  mutate(pred_final = ifelse(is.na(pred_l), 
                              pred_u,
-                             pred_l + (pred_u - pred_l) * Diff))
+                             ifelse(is.na(pred_u),
+                                    pred_l,
+                                    pred_l + (pred_u - pred_l) * Diff)),
+         Error = abs(pred_final - TTI))
 
 rm(Rel_p_l, Rel_p_u, join_TT, Rel_q, TT_q_table)
 
@@ -1011,6 +1069,57 @@ plot_predict(8)
 ```{r plot predict seg9, fig.width=12}
 plot_predict(9)
 ```
+
+## Analyse Prediction Results {.tabset .tabset-fade}
+
+### SEGMENT 3
+
+```{r SEGMENT 3 RESULTS}
+
+segment3 <- Rel_p %>%
+  filter(Segment == 3,
+         TTI > 2.9 & TTI < 3.1
+         # Error < 0.5
+         # is.na(Quantile_u)
+         ) %>%
+  arrange(desc(Error))
+
+model_3 <- filter(model_nls, Segment == 3,
+                  Delay_type == 'Crash',
+                  quantiles == '95%')
+
+```
+
+
+
+### SEGMENT 6
+
+```{r SEGMENT 6 RESULTS}
+
+segment6 <- Rel_p %>%
+  filter(Segment == 6,
+         TTI > 1.25 & TTI < 1.3,
+         Error > 0.25,
+         # is.na(Quantile_u)
+         ) %>%
+  arrange(desc(Error))
+
+```
+
+### SEGMENT 7
+
+```{r SEGMENT 7 RESULTS}
+
+segment7 <- Rel_p %>%
+  filter(Segment == 7
+         # TTI > 1.25 & TTI < 1.3,
+         # Error < 0.5
+         # is.na(Quantile_u)
+         ) %>%
+  arrange(desc(Error))
+
+```
+
 
 ## HEATMAP {.tabset .tabset-fade}
 
