@@ -834,15 +834,16 @@ demand_tti_plot(9,'',1)
 
 The below code is used to develop the model based on the relationship between TTI and DC. 
 
-```{r develop model, message = FALSE}
+```{r develop model, message = TRUE}
 
-q <-     95
-br <-    0.82
+q <-     5
+br <-    0.95
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_p %>%
-  filter(Segment == 3, Delay_type == 'Weather', Quantile_l == q, !is.na(DC)) %>%
+  filter(Segment == 3, Delay_type == 'Crash', Quantile_l == q, !is.na(DC)) %>%
   select(DC, TTI)
+
 
 # sample_data <- Rel_bin %>%
 #   filter(Segment == 3, Delay_type == 'Crash', quantiles == q, !is.na(DC)) %>%
@@ -852,15 +853,13 @@ formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
 b <- 3
 mu <- 1.5
 
-# preview(formulaExp, data = sample_data, start = list(mu, b))
-# formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
-
-sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
+sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3),
+                  nls.control(maxiter = 50))
 plotfit(sample_nls, smooth = TRUE)
 
-# predict(sample_nls, data.frame(DC = 1.4))
+predict(sample_nls, data.frame(DC = 1.4))
+rm(br)
 ```
-
 
 ```{r create prediction model, include = FALSE}
 
@@ -868,33 +867,39 @@ func_exp <- function(x) {
   nls(
     TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)),
     start = list(mu = 1.5, b = 3),
-    data = x)
+    data = x,
+    nls.control(maxiter = 50))
 }
 
-
-formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
-b <- 3
-mu <- 1.5
+breaks <- read.csv('./Future/model_breaks.csv')
+Rel_bin <- merge(Rel_bin, breaks)
 
 model_nls <- Rel_p %>%
-  nest(-Segment, -Delay_type,-Quantile_l) %>%
-  mutate(fit = purrr::map(data, func_exp)) 
-
-breaks <- read.csv('./Future/model_breaks.csv')
+  nest(-Segment, -Delay_type, -Quantile_l) %>%
+  filter(Segment %in% c(1:4,6:8),
+         Delay_type %in% c('None', 'Crash','Weather'),
+         Quantile_l %in% c('5%','10%','25%','50%','75%','90%','95%')) %>%
+  mutate(fit = purrr::map(data, func_exp))
 
 ```
+
 
 ```{r join model to table predict on DC, include = FALSE}
 table(duplicated(Rel_bin[,1:5]))
 
-Rel_p <- Rel
+Rel_p <- filter(Rel, Segment %in% c(1:4,6:8))
 
 Rel_q <- Rel_p %>% 
   select(Segment, Delay_type, Density_bin, TT_q = TT_mean, Index) %>%
   data.table()
 
-TT_q_table <- data.table(Rel_bin) %>% select(Segment, Delay_type, Density_bin, TT_q = TT_quantile, quantiles, FF_quantile, Flow_cong, Density_cong)
+TT_q_table <- data.table(Rel_bin) %>% 
+  select(Segment, Delay_type, Density_bin,
+         TT_q = TT_quantile, quantiles,
+         FF_quantile, Flow_cong, Density_cong, br) %>% data.table()
+
 setkey(TT_q_table, NULL)
+
 setkey(TT_q_table, Segment, Delay_type, Density_bin, TT_q)
 
 join_TT <- TT_q_table[Rel_q, roll = -Inf, .(TT_quantile_u = x.TT_q,
@@ -968,9 +973,12 @@ Rel_p <- Rel_p %>%
                             FF_l,
                             FF_l + (FF_u - FF_l) * Diff)),
          TTI = TT_mean / (Length/FF * 60))
+```
 
-Rel_p_u <- Rel_p %>% 
-  select(Segment, Delay_type, Quantiles = Quantile_u, DC, Index) %>%
+
+```{r}
+Rel_p_u <- Rel_p %>%
+  select(Segment, Delay_type, Quantiles = Quantile_u, DC, Index, br) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
   merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
@@ -979,7 +987,7 @@ Rel_p_u <- Rel_p %>%
   unnest(data,pred)
 
 Rel_p_l <- Rel_p %>% 
-  select(Segment, Delay_type, Quantiles = Quantile_l, DC, Index) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_l, DC, Index, br) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
   merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
   as.tibble() %>%
@@ -1013,6 +1021,15 @@ plot_predict <- function(Seg){
     facet_grid(~Delay_type)
   ggplotly(pr)
 }
+
+
+ pr <- ggplot(filter(Rel_p,Segment == 1), aes(x= TTI,y=pred_final, color = Quantile_u))+
+    geom_point() +
+    geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
+    # scale_x_continuous(breaks = c(1,2,3,4,5))+
+    # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
+    facet_grid(~Delay_type)
+  ggplotly(pr)
 ```
 
 
