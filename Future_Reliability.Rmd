@@ -683,7 +683,7 @@ TT_flow_plot <- function(seg,legend='', bin = NA){
     # scale_x_continuous(minor_breaks = seq(0,500,5), breaks = seq(0,500,10))+
     theme(legend.position=legend)+
     ggtitle(paste('Segment:',seg))
-  ggplotly(tt)
+  (tt)
   
 }
 ```
@@ -699,7 +699,7 @@ TT_flow_plot(3,'',bin = NA)
 ### Segment 6
 
 ```{r TT_flow seg6, fig.width = 11, echo = FALSE, message = FALSE}
-TT_flow_plot(6,'',bin = NA)
+TT_flow_plot(4,'',bin = NA)
 
 group_by(Rel_p, Segment) %>% summarise(max = sd(Dens))
 ```
@@ -834,55 +834,6 @@ demand_tti_plot(9,'',1)
 
 The below code is used to develop the model based on the relationship between TTI and DC. 
 
-```{r develop model, message = TRUE}
-
-q <-     5
-br <-    0.95
-q <- paste(q, '%', sep ='')
-
-sample_data <- Rel_p %>%
-  filter(Segment == 3, Delay_type == 'Crash', Quantile_l == q, !is.na(DC)) %>%
-  select(DC, TTI)
-
-
-# sample_data <- Rel_bin %>%
-#   filter(Segment == 3, Delay_type == 'Crash', quantiles == q, !is.na(DC)) %>%
-#   select(DC, TTI)
-
-formulaExp <- as.formula(TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)))
-b <- 3
-mu <- 1.5
-
-sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3),
-                  nls.control(maxiter = 50))
-plotfit(sample_nls, smooth = TRUE)
-
-predict(sample_nls, data.frame(DC = 1.4))
-rm(br)
-```
-
-```{r create prediction model, include = FALSE}
-
-func_exp <- function(x) {
-  nls(
-    TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)),
-    start = list(mu = 1.5, b = 3),
-    data = x,
-    nls.control(maxiter = 50))
-}
-
-breaks <- read.csv('./Future/model_breaks.csv')
-Rel_bin <- merge(Rel_bin, breaks)
-
-model_nls <- Rel_p %>%
-  nest(-Segment, -Delay_type, -Quantile_l) %>%
-  filter(Segment %in% c(1:4,6:8),
-         Delay_type %in% c('None', 'Crash','Weather'),
-         Quantile_l %in% c('5%','10%','25%','50%','75%','90%','95%')) %>%
-  mutate(fit = purrr::map(data, func_exp))
-
-```
-
 
 ```{r join model to table predict on DC, include = FALSE}
 table(duplicated(Rel_bin[,1:5]))
@@ -896,7 +847,7 @@ Rel_q <- Rel_p %>%
 TT_q_table <- data.table(Rel_bin) %>% 
   select(Segment, Delay_type, Density_bin,
          TT_q = TT_quantile, quantiles,
-         FF_quantile, Flow_cong, Density_cong, br) %>% data.table()
+         FF_quantile, Flow_cong, Density_cong) %>% data.table()
 
 setkey(TT_q_table, NULL)
 
@@ -929,7 +880,7 @@ join_TT <- TT_q_table[join_TT, roll = T, .(TT_quantile_l = x.TT_q,
                                            Flow_cong_l = Flow_cong,
                                            Density_cong_l = Density_cong,
                                            Index = Index,
-                                           br = br,
+                                           # br = br,
                                            Segment = Segment,
                                            Density_bin = Density_bin)]
 
@@ -940,7 +891,7 @@ join_TT <- join_TT[!duplicated(join_TT$Index),]
 Rel_p <- merge(Rel_p, 
                  join_TT[,c('Index','TT_quantile_u', 'TT_quantile_l',
                             'Quantile_u','Quantile_l','Flow_cong_u','Density_cong_u','FF_u',
-                            'Flow_cong_l','Density_cong_l','FF_l','br')],
+                            'Flow_cong_l','Density_cong_l','FF_l')],
                  by = 'Index', all.x=TRUE)
 
 table(is.na(Rel_p$Flow_cong))
@@ -976,11 +927,77 @@ Rel_p <- Rel_p %>%
 ```
 
 
+```{r develop model, message = TRUE}
+
+q <-     25
+br1 <-    0.9
+# br2 <-    0.95
+q <- paste(q, '%', sep ='')
+
+sample_data <- Rel_p %>%
+  filter(Segment == 1, Delay_type == 'None', Quantile_l == q, !is.na(DC)) %>%
+  select(DC, TTI, TT_mean) 
+
+
+# sample_data <- Rel_bin %>%
+#   filter(Segment == 3, Delay_type == 'Crash', quantiles == q, !is.na(DC)) %>%
+#   select(DC, TTI)
+
+# formulaExp <- as.formula(TTI ~(DC <= br1) +( DC > br1) * ( mu * (DC ^ b)))
+# b <- 3
+# mu <- 1.5
+# # nu <-  .1
+# 
+# sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
+# plotfit(sample_nls, smooth = TRUE)
+
+formulaExp <- lm(TTI ~ splines::bs(DC, knots = c(0.5,0.95,1.12)), data = sample_data)
+
+sample_data$fitted <- ifelse(sample_data$DC < 0.5, 1, formulaExp$fitted.values)
+
+x_list <- as.character(attr(formulaExp$terms, "predvars")[[3]]$knots)
+x_list <- as.numeric(x_list[2:length(x_list)])
+
+ggplot(sample_data) +
+  geom_point(aes(x = DC, y = TTI), alpha = 0.25) +
+  geom_line(aes(x = DC, y = fitted, color = 'red')) +
+  geom_abline(slope = 0, intercept = 1) +
+  geom_vline(xintercept = x_list)
+
+
+# predict(sample_nls, data.frame(DC = 1.4))
+rm(br)
+```
+
+```{r create prediction model, include = FALSE}
+
+func_exp <- function(x) {
+  nls(
+    TTI ~(DC <= br) + (DC > br) * ( mu * (DC ^ b)),
+    start = list(mu = 1.5, b = 3),
+    data = x,
+    nls.control(maxiter = 50))
+}
+
+breaks <- read.csv('./Future/model_breaks.csv')
+Rel_p <- merge(Rel_p, breaks)
+
+model_nls <- Rel_p %>%
+  nest(-Segment, -Delay_type, -Quantile_l) %>%
+  filter(Segment %in% c(1:4,6:8),
+         Delay_type %in% c('None', 'Crash','Weather'),
+         Quantile_l %in% c('5%','10%','25%','50%','75%','90%','95%')) %>%
+  mutate(fit = purrr::map(data, func_exp))
+
+```
+
+
 ```{r}
 Rel_p_u <- Rel_p %>%
   select(Segment, Delay_type, Quantiles = Quantile_u, DC, Index, br) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
-  merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
+  merge(breaks) %>%
+  merge(model_nls %>% select(Segment, Delay_type, Quantiles = Quantile_l, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
@@ -989,7 +1006,7 @@ Rel_p_u <- Rel_p %>%
 Rel_p_l <- Rel_p %>% 
   select(Segment, Delay_type, Quantiles = Quantile_l, DC, Index, br) %>%
   nest(-Segment, -Delay_type, -Quantiles) %>%
-  merge(model_nls %>% select(Segment, Delay_type, Quantiles = quantiles, fit)) %>%
+  merge(model_nls %>% select(Segment, Delay_type, Quantiles = Quantile_l, fit)) %>%
   as.tibble() %>%
   mutate(pred = map2(fit,data,predict)) %>%
   as.tibble() %>%
@@ -1013,23 +1030,16 @@ rm(Rel_p_l, Rel_p_u, join_TT, Rel_q, TT_q_table)
 ```{r prediction plotting fuction, include = FALSE}
 plot_predict <- function(Seg){
   
-  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x= TTI,y=pred_final, color = Quantile_u))+
+  pr <- ggplot(filter(Rel_p,Segment == Seg), aes(x= TTI,y=pred_final, color = Quantile_l))+
     geom_point() +
     geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
     # scale_x_continuous(breaks = c(1,2,3,4,5))+
     # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
     facet_grid(~Delay_type)
-  ggplotly(pr)
+  pr
 }
 
 
- pr <- ggplot(filter(Rel_p,Segment == 1), aes(x= TTI,y=pred_final, color = Quantile_u))+
-    geom_point() +
-    geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
-    # scale_x_continuous(breaks = c(1,2,3,4,5))+
-    # scale_y_continuous(breaks = c(1,2,3,4,5,6))+
-    facet_grid(~Delay_type)
-  ggplotly(pr)
 ```
 
 
