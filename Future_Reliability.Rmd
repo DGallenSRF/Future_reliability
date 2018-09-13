@@ -933,18 +933,44 @@ Rel_p <- Rel_p %>%
 ```
 
 
+```{r old model}
+# q <-     75
+# br1 <-    0.53
+# # br2 <-    0.95
+# q <- paste(q, '%', sep ='')
+# 
+# sample_data <- Rel_p %>%
+#   filter(Segment == 7, Delay_type == 'None', Quantile_l == q, !is.na(DC)) %>%
+#   select(DC, TTI, TT_mean)
+# 
+# # sample_data <- Rel_bin %>%
+# #   filter(Segment == 7, Delay_type == 'None', quantiles == q, !is.na(DC)) %>%
+# #   select(DC, TTI)
+# 
+# formulaExp <- as.formula(TTI ~(DC <= br1) +( DC > br1) * ( mu * (DC ^ b)))
+# b <- 3
+# mu <- 1.5
+# # nu <-  .1
+# 
+# sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
+# plotfit(sample_nls, smooth = TRUE)
+
+```
+
+
+
 ```{r develop model, message = TRUE}
 
 S <- 1
-D_type <- 'None'
-q <-     5
+D_type <- 'Crash'
+q <-    10
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_p %>%
   filter(Segment == S, Delay_type == D_type, Quantile_l == q, !is.na(DC)) %>%
   select(DC, TTI) 
 
-knot_list <- c( 0.9)
+knot_list <- c(0.55, 0.9)
 # sample_data$TTI <- ifelse(sample_data$DC < knot_list[1], 1, sample_data$TTI)
 # sample_data <- rbind(data.frame(DC = seq(0.1,knot_list[1],0.005), TTI = 1), sample_data)
 formulaExp <- lm(TTI ~ splines::bs(DC, knots = knot_list), data = sample_data)
@@ -965,15 +991,17 @@ iter_breaks$knot <- list(knot_list)
 
 bind_model_breaks <- function(x) {
   x <- x
-  ifelse(x$S %in% model_breaks$S &
-     x$D_type %in% model_breaks$D_type &
-     x$q %in% model_breaks$q,
-    stop('Data exists'),
-    return(x))
+  ifelse(nrow(filter(model_breaks,
+                    model_breaks$S %in% x$S,
+                    model_breaks$D_type %in% x$D_type,
+                    model_breaks$q %in% x$q)) > 0,
+         stop('Data exists'),
+         return(x))
 }
 
 r <- bind_model_breaks(iter_breaks)
 summary(formulaExp)
+
 ```
 
 ```{r}
@@ -989,7 +1017,22 @@ saveRDS(model_breaks, 'model_breaks.rds')
 
 ```
 
-```{r create prediction model, include = FALSE}
+```{r}
+func_exp <- function(x,y) {
+lm(TTI ~ splines::bs(DC, knots = x), data = y)
+}
+
+
+mod1 <- Rel_p %>%
+  filter(Segment == 1) %>%
+  select(Segment, Delay_type, Quantiles = Quantile_u, DC, Index, TTI) %>%
+  nest(-Segment, -Delay_type, -Quantiles) %>%
+  merge(model_breaks %>% select(Segment = S, Delay_type = D_type, Quantiles = q, knot)) %>%
+  mutate(fit = purrr::map2(knot,data,func_exp))
+```
+
+
+```{r create old prediction model, include = FALSE}
 
 func_exp <- function(x) {
   nls(
