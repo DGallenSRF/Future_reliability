@@ -962,32 +962,37 @@ Rel_p <- Rel_p %>%
 ```{r develop model, message = TRUE}
 
 S <- 1
-D_type <- 'Crash'
-q <-    10
+D_type <- 'None'
+q <-    95
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_p %>%
-  filter(Segment == S, Delay_type == D_type, Quantile_l == q, !is.na(DC)) %>%
-  select(DC, TTI) 
+  filter(Segment == S, Delay_type == D_type, Quantile_l == q, !is.na(DC), Index) %>%
+  select(DateTime, TT_mean, VMT_total, Segment, Delay_type, Quantile_l, DC, TTI, Index) 
 
-knot_list <- c(0.55, 0.9)
-# sample_data$TTI <- ifelse(sample_data$DC < knot_list[1], 1, sample_data$TTI)
-# sample_data <- rbind(data.frame(DC = seq(0.1,knot_list[1],0.005), TTI = 1), sample_data)
-formulaExp <- lm(TTI ~ splines::bs(DC, knots = knot_list), data = sample_data)
+model_data <- sample_data
+knot_list <- c(0.6)
+model_data$TTI <- ifelse(sample_data$DC < knot_list[1], 1, sample_data$TTI)
+# model_data <- bind_rows(data.frame(DC = seq(0.1,knot_list[1],0.005), TTI = 1), model_data)
+formulaExp <- lm(TTI ~ splines::bs(DC, knots = knot_list), data = model_data)
 
 # sample_data$fitted <- ifelse(sample_data$DC < knot_list[1], 1, formulaExp$fitted.values)
-sample_data$fitted <- formulaExp$fitted.values
+model_data$fit <- formulaExp$fitted.values
+sample_data <- merge(sample_data, select(model_data, Index, fit), by = 'Index', all.x = TRUE) %>%
+  nest(-Segment,-Delay_type, -Quantile_l)
 
-ggplot(sample_data) +
+ggplot(model_data) +
   geom_point(aes(x = DC, y = TTI), alpha = 0.25) +
-  geom_line(aes(x = DC, y = fitted, color = 'red')) +
+  geom_line(aes(x = DC, y = fit, color = 'red')) +
   scale_x_continuous(breaks = seq(0.1,4,0.1)) +
-  scale_y_continuous(breaks = seq(1,max(sample_data$TTI),0.25))+
+  scale_y_continuous(breaks = seq(1,14,0.1)) +
   # geom_abline(slope = 0, intercept = 1) +
   geom_vline(xintercept = knot_list)
 
 iter_breaks <- data.frame(S=S,D_type=D_type,q=q)
 iter_breaks$knot <- list(knot_list)
+iter_breaks$fit <- list(formulaExp)
+
 
 bind_model_breaks <- function(x) {
   x <- x
@@ -1005,13 +1010,20 @@ summary(formulaExp)
 ```
 
 ```{r}
+# pred_data <- sample_data
+
 model_breaks <- rbind(model_breaks,r)
+pred_data <- rbind(pred_data, sample_data)
 
 # model_breaks <- model_breaks %>% droplevels() %>%
 #   mutate(knot = replace(knot, S == iter_breaks$S &
-#                            D_type == iter_breaks$D_type &
-#                            q == iter_breaks$q,
-#                          list(iter_breaks$knot[[1]])))
+#                           D_type == iter_breaks$D_type &
+#                           q == iter_breaks$q,
+#                         list(iter_breaks$knot[[1]])),
+#          fit = replace(fit, S == iter_breaks$S &
+#                          D_type == iter_breaks$D_type &
+#                          q == iter_breaks$q,
+#                        list(iter_breaks$fit[[1]])))
 
 saveRDS(model_breaks, 'model_breaks.rds')
 
