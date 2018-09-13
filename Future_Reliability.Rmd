@@ -927,46 +927,66 @@ Rel_p <- Rel_p %>%
 ```
 
 
+```{r}
+# model_breaks <- data.frame()
+
+```
+
+
 ```{r develop model, message = TRUE}
 
-q <-     25
-br1 <-    0.9
-# br2 <-    0.95
+S <- 1
+D_type <- 'None'
+q <-     5
 q <- paste(q, '%', sep ='')
 
 sample_data <- Rel_p %>%
-  filter(Segment == 1, Delay_type == 'None', Quantile_l == q, !is.na(DC)) %>%
-  select(DC, TTI, TT_mean) 
+  filter(Segment == S, Delay_type == D_type, Quantile_l == q, !is.na(DC)) %>%
+  select(DC, TTI) 
 
+knot_list <- c( 0.9)
+# sample_data$TTI <- ifelse(sample_data$DC < knot_list[1], 1, sample_data$TTI)
+# sample_data <- rbind(data.frame(DC = seq(0.1,knot_list[1],0.005), TTI = 1), sample_data)
+formulaExp <- lm(TTI ~ splines::bs(DC, knots = knot_list), data = sample_data)
 
-# sample_data <- Rel_bin %>%
-#   filter(Segment == 3, Delay_type == 'Crash', quantiles == q, !is.na(DC)) %>%
-#   select(DC, TTI)
-
-# formulaExp <- as.formula(TTI ~(DC <= br1) +( DC > br1) * ( mu * (DC ^ b)))
-# b <- 3
-# mu <- 1.5
-# # nu <-  .1
-# 
-# sample_nls <- nls(formulaExp, data = sample_data, start = list(mu = 1.5, b = 3))
-# plotfit(sample_nls, smooth = TRUE)
-
-formulaExp <- lm(TTI ~ splines::bs(DC, knots = c(0.5,0.95,1.12)), data = sample_data)
-
-sample_data$fitted <- ifelse(sample_data$DC < 0.5, 1, formulaExp$fitted.values)
-
-x_list <- as.character(attr(formulaExp$terms, "predvars")[[3]]$knots)
-x_list <- as.numeric(x_list[2:length(x_list)])
+# sample_data$fitted <- ifelse(sample_data$DC < knot_list[1], 1, formulaExp$fitted.values)
+sample_data$fitted <- formulaExp$fitted.values
 
 ggplot(sample_data) +
   geom_point(aes(x = DC, y = TTI), alpha = 0.25) +
   geom_line(aes(x = DC, y = fitted, color = 'red')) +
-  geom_abline(slope = 0, intercept = 1) +
-  geom_vline(xintercept = x_list)
+  scale_x_continuous(breaks = seq(0.1,4,0.1)) +
+  scale_y_continuous(breaks = seq(1,max(sample_data$TTI),0.25))+
+  # geom_abline(slope = 0, intercept = 1) +
+  geom_vline(xintercept = knot_list)
 
+iter_breaks <- data.frame(S=S,D_type=D_type,q=q)
+iter_breaks$knot <- list(knot_list)
 
-# predict(sample_nls, data.frame(DC = 1.4))
-rm(br)
+bind_model_breaks <- function(x) {
+  x <- x
+  ifelse(x$S %in% model_breaks$S &
+     x$D_type %in% model_breaks$D_type &
+     x$q %in% model_breaks$q,
+    stop('Data exists'),
+    return(x))
+}
+
+r <- bind_model_breaks(iter_breaks)
+summary(formulaExp)
+```
+
+```{r}
+model_breaks <- rbind(model_breaks,r)
+
+# model_breaks <- model_breaks %>% droplevels() %>%
+#   mutate(knot = replace(knot, S == iter_breaks$S &
+#                            D_type == iter_breaks$D_type &
+#                            q == iter_breaks$q,
+#                          list(iter_breaks$knot[[1]])))
+
+saveRDS(model_breaks, 'model_breaks.rds')
+
 ```
 
 ```{r create prediction model, include = FALSE}
