@@ -1,5 +1,5 @@
 Segment,Quantile_l,Delay_type,br
-1,5%,Crash,0
+1,5%,Crash,0.01
 1,10%,Crash,1.03
 1,25%,Crash,1.01
 1,50%,Crash,0.89
