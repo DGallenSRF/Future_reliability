@@ -870,11 +870,11 @@ Rel_p$hr_min <- Rel_p$Hour + Rel_p$minute/60
 Rel_p <- Rel_p %>% filter(Segment != 1)
 
 
-Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 6.0) & (Rel_p$hr_min < 9.0), 'Morning',
-                          ifelse((Rel_p$hr_min >=9.0) & (Rel_p$hr_min < 15.5), 'Lunch',
-                                 ifelse((Rel_p$hr_min >= 15.5) & (Rel_p$hr_min < 18.5),'Afternoon',
-                                        ifelse((Rel_p$hr_min >= 18.5) & (Rel_p$hr_min < 23), 'Evening',
-                                               ifelse((Rel_p$hr_min >= 23) | (Rel_p$hr_min < 6.0), 'Night','NA')))))
+# Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 6.0) & (Rel_p$hr_min < 9.0), 'Morning',
+#                           ifelse((Rel_p$hr_min >=9.0) & (Rel_p$hr_min < 15.5), 'Lunch',
+#                                  ifelse((Rel_p$hr_min >= 15.5) & (Rel_p$hr_min < 18.5),'Afternoon',
+#                                         ifelse((Rel_p$hr_min >= 18.5) & (Rel_p$hr_min < 23), 'Evening',
+#                                                ifelse((Rel_p$hr_min >= 23) | (Rel_p$hr_min < 6.0), 'Night','NA')))))
 
 # Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 7.5) & (Rel_p$hr_min < 8.5), 'Morning',
 #                           ifelse((Rel_p$hr_min >=8.5) & (Rel_p$hr_min < 17.25), 'Lunch',
@@ -882,11 +882,11 @@ Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 6.0) & (Rel_p$hr_min < 9.0), 'Morning
 #                                         ifelse((Rel_p$hr_min >= 18.25) & (Rel_p$hr_min < 23), 'Evening',
 #                                                ifelse((Rel_p$hr_min >= 23) | (Rel_p$hr_min < 7.5), 'Night','NA')))))
 
-# Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 5.0) & (Rel_p$hr_min < 10.0), 'Morning',
-#                           ifelse((Rel_p$hr_min >=10.0) & (Rel_p$hr_min < 14.0), 'Lunch',
-#                                  ifelse((Rel_p$hr_min >= 14.0) & (Rel_p$hr_min < 19.0),'Afternoon',
-#                                         ifelse((Rel_p$hr_min >= 19.0) & (Rel_p$hr_min < 23), 'Evening',
-#                                                ifelse((Rel_p$hr_min >= 23) | (Rel_p$hr_min < 5.0), 'Night','NA')))))
+Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 5.0) & (Rel_p$hr_min < 10.0), 'Morning',
+                          ifelse((Rel_p$hr_min >=10.0) & (Rel_p$hr_min < 14.0), 'Lunch',
+                                 ifelse((Rel_p$hr_min >= 14.0) & (Rel_p$hr_min < 19.0),'Afternoon',
+                                        ifelse((Rel_p$hr_min >= 19.0) & (Rel_p$hr_min < 23), 'Evening',
+                                               ifelse((Rel_p$hr_min >= 23) | (Rel_p$hr_min < 5.0), 'Night','NA')))))
 
 ```
 
@@ -1052,7 +1052,7 @@ MNPass_eqt <- read.csv('./mnpass_equations.csv') %>%
 
 MNPass_eqt <- MNPass_eqt %>%
   mutate(Max_MnPASS_Demand = ifelse(Max_MnPASS_Demand == 1600,1600,NA))
-MNPass_eqt
+# MNPass_eqt$Beta <- MNPass_eqt$Beta + .0002
 ```
 
 
@@ -1065,7 +1065,8 @@ no_change_2040 <- forecasts %>%
   select(Segment, Demand_2040_change, Lanes_add) %>%
   merge(Exist_Demand) %>%
   mutate(offpeak = 'Off_Peak') %>%
-  mutate(Time_Period = ifelse(DayPeriod %in% c('Morning','Afternoon'), DayPeriod, offpeak)) %>%
+  mutate(Time_Period = ifelse((DayPeriod %in% c('Morning','Afternoon')) & (weekdays(DateTime) %in% wkday),
+                              DayPeriod, 'Off_Peak'))  %>%
   mutate(Demand_Hour_2040_all_lanes  = Demand_Hour_all_lanes * Demand_2040_change,
          Demand_Hour_2040_per_lane = Demand_Hour_2040_all_lanes / (Lanes + Lanes_add)) %>%
   mutate(DC_new = Demand_Hour_2040_per_lane/Flow_cong_Hour_Lane)
@@ -1073,8 +1074,6 @@ no_change_2040 <- forecasts %>%
          #                ifelse(Density_bin >= Density_cong & Flow <= Flow_cong,
          #                       Flow_cong + (Flow_cong - Flow),
          #                       Flow)))
-
-
 
 no_change_2040 <- upper_lower_model(no_change_2040)
 ```
@@ -1088,7 +1087,8 @@ GP_2040 <- forecasts %>%
   select(Segment, Demand_2040_change, Lanes_add) %>%
   merge(Exist_Demand) %>%
   mutate(offpeak = 'Off_Peak') %>%
-  mutate(Time_Period = ifelse(DayPeriod %in% c('Morning','Afternoon'), DayPeriod, offpeak)) %>%
+  mutate(Time_Period = ifelse((DayPeriod %in% c('Morning','Afternoon')) & (weekdays(DateTime) %in% wkday), 
+                              DayPeriod, 'Off_Peak'))  %>%
   mutate(Demand_Hour_2040_all_lanes  = Demand_Hour_all_lanes * Demand_2040_change,
          Demand_Hour_2040_per_lane = Demand_Hour_2040_all_lanes / (Lanes + Lanes_add)) %>%
   mutate(DC_new = Demand_Hour_2040_per_lane/Flow_cong_Hour_Lane)
@@ -1105,7 +1105,8 @@ MNPass_2040 <- forecasts %>%
   filter(variable == 'MnPASS') %>%
   select(Segment, Demand_2040_change, Lanes_add) %>%
   merge(Exist_Demand) %>%
-  mutate(Time_Period = ifelse((DayPeriod %in% c('Morning','Afternoon')) & (weekdays(DateTime) %in% wkday), DayPeriod, 'Off_Peak')) %>%
+  mutate(Time_Period = ifelse((DayPeriod %in% c('Morning','Afternoon')) & (weekdays(DateTime) %in% wkday),
+                              DayPeriod, 'Off_Peak')) %>%
   merge(MNPass_eqt) %>%
   mutate(Demand_Hour_2040_all_lanes  = Demand_Hour_all_lanes * Demand_2040_change,
          MNPass_demand_hour = ifelse(Function_Type == 'Exp', 
@@ -1134,6 +1135,25 @@ MNPass_2040_remaining_lanes <- upper_lower_model(mutate(MNPass_2040,
                                         DC_new = Remaining_per_lane_demand_hour/Flow_cong_Hour_Lane))
 ```
 
+```{r,fig.width=10}
+
+mnpass <- filter(MNPass_2040,
+       (MNPass_demand_hour_final/(Remaining_per_lane_demand_hour)<10) & 
+         (MNPass_demand_hour_final/(Remaining_per_lane_demand_hour) >0)) %>%
+  mutate(y = MNPass_demand_hour_final/Remaining_per_lane_demand_hour) %>%
+  arrange(desc(y))
+
+filter(MNPass_2040,
+       (MNPass_demand_hour_final/(Remaining_per_lane_demand_hour)<10) & 
+         (MNPass_demand_hour_final/(Remaining_per_lane_demand_hour) >0)) %>%
+ggplot(aes(x = MNPass_demand_hour_final, y = MNPass_demand_hour_final/Remaining_per_lane_demand_hour,
+                        color = Segment))+
+  geom_jitter(alpha=1)+
+  facet_grid(.~Time_Period)
+```
+
+
+
 ## Alternatives Heatmaps
 
 ```{r}
@@ -1155,7 +1175,7 @@ dim(review)
 
 ```{r stacked bar chart}
 
-demand_flow_factor <- Rel_p%>%
+demand_flow_factor <- Rel_p %>%
   mutate(doy = yday(DateTime)) %>%
   group_by(Segment,DayPeriod, doy) %>%
   summarise(Demand_Hour_lane_day_dp_sum = sum(Demand_Hour_Lane),
@@ -1210,14 +1230,15 @@ d <- Rel_p %>%
   mutate(doy = yday(DateTime)) %>%
   filter(DayPeriod %in% dp) %>%
   select(Segment, VMT_total_SRF, Hourly_Flow_per_lane , WeekDay, DateTime, Hour, Lanes, DayPeriod, doy, Length, FF) %>%
-  merge(select(alternative, Segment, DateTime, Demand_2040_change, Lanes_add, Remaining_all_lanes_demand_hour)) %>%
+  merge(select(alternative, Segment, DateTime, Demand_2040_change, 
+               Lanes_add, Remaining_all_lanes_demand_hour,Demand_Hour_2040_all_lanes)) %>%
   mutate(Flow_Hour_2040_all_lanes = Hourly_Flow_per_lane * Demand_2040_change * Lanes) %>%
   group_by_('Segment',grpby, 'doy') %>%
-  summarise(Demand_Hour_2040_all_lanes_day_dp_sum = sum(Remaining_all_lanes_demand_hour),
+  summarise(Demand_Hour_2040_all_lanes_day_dp_sum = sum(Demand_Hour_2040_all_lanes),
             Flow_Hour_2040_all_lanes_day_dp_sum = sum(Flow_Hour_2040_all_lanes),
             Length = mean(Length), FF = round(mean(FF),0)) %>%
   mutate(demand_flow_factor = Demand_Hour_2040_all_lanes_day_dp_sum /
-           Flow_Hour_2040_remain_lanes_day_dp_sum)
+           Flow_Hour_2040_all_lanes_day_dp_sum)
 return(d)
 }
 
@@ -1226,7 +1247,7 @@ return(d)
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
 
-agg_vehicle_thru <- function(input_d, alternative, group,dp = c('Morning','Afternoon')){
+agg_vehicle_thru <- function(input_d, alternative, group, dp = c('Morning','Afternoon')){
 
 # input_d <-  vehicle_no_change
 # alternative <- no_change_2040
@@ -1399,18 +1420,18 @@ PMT_PHT <- function(input_d, alternative,dp = allday,
 #
 # input_d <-  vehicle_GP
 # alternative <- GP_2040
-# occupancy <- occ_mnapss_gp
-# input_d <-  vehicle_MNPass_ff_offpeak
-# alternative <- pmt_pht_mnpass_ff_offpeak
-# occupancy <- occ_GP
-# group <- 'direction'
-# dp = c('Morning','Afternoon')
-# dp = c('Lunch','Evening','Night')
+# occupancy <- occ_mnpass_gp
+# # input_d <-  vehicle_MNPass_ff_offpeak
+# # alternative <- pmt_pht_mnpass_ff_offpeak
+# # occupancy <- occ_GP
+# # group <- 'direction'
+# # dp = c('Morning','Afternoon')
+# # dp = c('Lunch','Evening','Night')
 # dp = allday
 # wd=allweek
 # occ_dat <- occ %>%
-#   filter(Alternative == 'GP') %>%
-#   select(occupancy,DayPeriod)
+#   filter(Alternative == 'MnPass_ff') %>%
+#   select(occupancy,DayPeriod,weekperiod)
 
 results = list()  
   
@@ -1419,11 +1440,12 @@ throughput = alternative %>%
   merge(input_d) %>%
   mutate(Flow_2040 = Demand_Hour_2040_all_lanes / demand_flow_factor,
          VMT_2040_15 = Flow_2040 * 0.25 * Length,
-         wkday=weekdays(.$DateTime),
-         direction = ifelse(Segment < 6,'EB','WB')) %>%
+         weekday=weekdays(.$DateTime),
+         direction = ifelse(Segment < 6,'EB','WB'),
+         weekperiod = ifelse(weekday %in% wkday,'weekday','weekend')) %>%
   filter(DayPeriod %in% dp,
-         wkday %in% wd) %>%
-  select(DateTime, Segment, wkday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF,DayPeriod) %>%
+         weekday %in% wd) %>%
+  select(DateTime, Segment, weekday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF,DayPeriod) %>%
   mutate(TT_hour = (TTI * Length) / FF) %>%
   merge(occ_dat)
 
@@ -1444,16 +1466,23 @@ return(results)
 occ <- read.csv("H:/Projects/11000/11155/TraffStudy/Reliability/Reliability_processing/Future/reliability_occupancy.csv")
 colnames(occ) <- c('Alternative','occupancy','DayPeriod')
 occ[occ$Alternative == 'MnPASS Alternative - MnPASS Lane','occupancy'] = occ[occ$Alternative == 'MnPASS Alternative - MnPASS Lane','occupancy']
-occ
+occ$weekperiod <- 'weekday'
+occ <- occ %>%
+  mutate(weekperiod = 'weekend',
+         occupancy = 1.07) %>%
+  bind_rows(occ)
+# occ[grepl('*ff',occ$Alternative), 'occupancy'] <- 1.84
 ```
 
 ```{r no change}
 
-occ_no_change <- as.numeric(occ[(occ$Alternative == 'no_change')&(occ$DayPeriod == 'Morning'),'occupancy'])
+occ_no_change <- as.numeric(occ[(occ$Alternative == 'no_change')
+                                &(occ$DayPeriod == 'Morning')
+                                &(occ$weekperiod == 'weekday'),'occupancy'])
 
 vehicle_no_change <-  vehicle_tru(no_change_2040)
 thru_no_change <- agg_vehicle_thru(demand_flow_factor, no_change_2040,agg)
-thru_no_change$occupancy <- thru_no_change$Vol * occ_no_change
+thru_no_change$persons <- thru_no_change$Vol * occ_no_change
 thru_no_change$Alternative <- 'no_change'
 
 
@@ -1485,11 +1514,13 @@ pmt_pht_no_change['alternative'] = 'no_change'
 
 ```{r GP}
 
-occ_GP <- as.numeric(occ[(occ$Alternative == 'GP')&(occ$DayPeriod == 'Morning'),'occupancy'])
+occ_GP <- as.numeric(occ[(occ$Alternative == 'GP')
+                         &(occ$DayPeriod == 'Morning')
+                         &(occ$weekperiod == 'weekday'),'occupancy'])
 
 vehicle_GP <-  vehicle_tru(GP_2040)
 thru_GP <-  agg_vehicle_thru(demand_flow_factor, GP_2040, agg)
-thru_GP$occupancy <- thru_GP$Vol * occ_GP
+thru_GP$persons <- thru_GP$Vol * occ_GP
 thru_GP$Alternative <- 'GP'
 
 PTI_GP <- agg_PTI(demand_flow_factor, GP_2040,agg)
@@ -1520,13 +1551,15 @@ pmt_pht_GP['alternative'] = 'GP'
 
 ```{r mnpass ff}
 
-occ_mnpass_ff <- as.numeric(occ[(occ$Alternative == 'MnPass_ff')&(occ$DayPeriod == 'Morning'),'occupancy'])
+occ_mnpass_ff <- as.numeric(occ[(occ$Alternative == 'MnPass_ff')
+                                &(occ$DayPeriod == 'Morning')
+                                &(occ$weekperiod == 'weekday'),'occupancy'])
 
 vehicle_MNPass_ff <- vehicle_tru_mnPass_ff(MNPass_2040_FF)
 thru_MNPass_ff <- select(MNPass_2040_FF, -Demand_Hour_2040_all_lanes) %>%
   mutate(Demand_Hour_2040_all_lanes = MNPass_demand_hour_final) %>%
   agg_vehicle_thru(alternative = .,demand_flow_factor, agg)
-thru_MNPass_ff$occupancy <- thru_MNPass_ff$Vol * occ_mnpass_ff
+thru_MNPass_ff$persons <- thru_MNPass_ff$Vol * occ_mnpass_ff
 thru_MNPass_ff$Alternative <- 'MNPass'
 
 PTI_MNPass_ff <- agg_PTI(demand_flow_factor,
@@ -1569,21 +1602,24 @@ pmt_pht_mnpass_ff['alternative']= 'MnPass_ff'
 
 ```{r mnpassGP}
 
-occ_mnpass_gp = as.numeric(occ[(occ$Alternative == 'MnPass_GP')&(occ$DayPeriod == 'Morning'),'occupancy'])
+occ_mnpass_gp = as.numeric(occ[(occ$Alternative == 'MnPass_GP')
+                               &(occ$DayPeriod == 'Morning')
+                               &(occ$weekperiod == 'weekday'),'occupancy'])
 
 ##
 vehicle_MNPass_remain <- vehicle_tru_mnPass_remain(MNPass_2040_remaining_lanes)
+
 vehicle_MNPass_remain <- merge(vehicle_MNPass_remain, 
                                select(vehicle_MNPass_ff, Segment, DayPeriod, doy, Flow_Hour_2040_mnpass_lane_day_dp_sum)) %>%
-  mutate(Flow_Hour_2040_remain_lanes_day_dp_sum = 
-           Flow_Hour_2040_remain_lanes_day_dp_sum - Flow_Hour_2040_mnpass_lane_day_dp_sum,
-         demand_flow_factor = Demand_Hour_2040_all_lanes_day_dp_sum /Flow_Hour_2040_remain_lanes_day_dp_sum)
+  mutate(Flow_Hour_2040_all_lanes_day_dp_sum = 
+           Flow_Hour_2040_all_lanes_day_dp_sum - Flow_Hour_2040_mnpass_lane_day_dp_sum,
+         demand_flow_factor = Demand_Hour_2040_all_lanes_day_dp_sum /Flow_Hour_2040_all_lanes_day_dp_sum)
 
 
 thru_MNPass_remain <- select(MNPass_2040_remaining_lanes, -Demand_Hour_2040_all_lanes) %>%
   mutate(Demand_Hour_2040_all_lanes = Remaining_all_lanes_demand_hour) %>%
   agg_vehicle_thru(alternative = .,demand_flow_factor, agg)  
-thru_MNPass_remain$occupancy <- thru_MNPass_remain$Vol * occ_mnpass_gp
+thru_MNPass_remain$persons <- thru_MNPass_remain$Vol * occ_mnpass_gp
   
 thru_MNPass_remain$Alternative <- 'MNPass'
 
@@ -1613,7 +1649,7 @@ delay_MnPass_GP$Alternative <- 'MNPass_GP'
 
 occ_d <- occ %>%
   filter(Alternative == 'MnPass_GP') %>%
-  select(occupancy,DayPeriod)
+  select(occupancy,DayPeriod,weekperiod)
 
 
 vehicle_MNPass_remain <-  vehicle_tru_mnPass_remain(MNPass_2040_remaining_lanes,
@@ -1635,18 +1671,18 @@ flow_mnpass_ff <- vehicle_tru_mnPass_ff(MNPass_2040_FF, grpby = 'Hour') %>%
 
 flow_mnpass_GP <- vehicle_tru_mnPass_remain(MNPass_2040_remaining_lanes,grpby = 'Hour') %>%
   merge(Segments_494[,c('Segment','Lanes')]) %>%
-  select(Segment,Hour,doy,Flow_Hour_2040_remain_lanes_day_dp_sum,Lanes) %>%
-  mutate(mnpass_GP_flow = (Flow_Hour_2040_remain_lanes_day_dp_sum/Lanes)/4)
+  select(Segment,Hour,doy,Flow_Hour_2040_all_lanes_day_dp_sum,Lanes) %>%
+  mutate(mnpass_GP_flow = (Flow_Hour_2040_all_lanes_day_dp_sum/Lanes)/4)
 
 mnpass_flow_comp <- merge(flow_mnpass_ff,flow_mnpass_GP) %>%
   mutate(diff = mnpass_GP_flow - mnpass_ff_flow,DayPeriod = ifelse(Hour <10,'Morning','Evening'))
 
 mnpass_flow_comp %>%
-  filter(diff == 0) %>%
+  # filter(diff == 0) %>%
   melt(id.vars = c('Segment','Hour','doy','DayPeriod'), measure.vars = c('mnpass_ff_flow','mnpass_GP_flow'),
        variable.name = 'alternative',value.name = 'flow') %>%
   group_by(doy,DayPeriod,alternative)%>%
-  summarise(flow = max(flow),)%>%
+  summarise(flow = max(flow),) %>%
   ggplot(aes(x=doy,y=flow,color=alternative)) +
   # ggplot(aes(x=doy,y=diff)) +
   geom_line()+
@@ -1697,11 +1733,31 @@ pmt_pht_494 <- rbind(pmt_pht_GP, pmt_pht_mnpass_ff, pmt_pht_mnpass_remain,
 
 ```
 
+```{r}
 
 
-```{r, fig.width=10}
+```
+
+
+```{r, fig.height=9}
 
 final_thru <- rbind(thru_GP, thru_no_change,thru_MNPass_remain, thru_MNPass_ff)
+
+names(final_thru)[6] <- 'persons'
+final_transit <- read.csv('Transit_riders.csv')
+
+final_thru <-  bind_rows(final_thru, final_transit)
+final_thru$TTI_Cat <- factor(final_thru$TTI_Cat, 
+                                   levels = c('>4.0 TTI',
+                                               '3.5 TTI - 4.0 TTI',
+                                               '3.0 TTI - 3.5 TTI',
+                                               '2.5 TTI - 3.0 TTI',
+                                               '2.0 TTI - 2.5 TTI',
+                                               '1.5 TTI - 2.0 TTI',
+                                               '1.25 TTI - 1.5 TTI',
+                                               '1.0 TTI - 1.25 TTI',
+                                               '<1.0 TTI'))
+
 myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
 names(myColors) <- levels(final_thru$TTI_Cat)
 colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors)
@@ -1709,7 +1765,7 @@ fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors)
 
 final_thru <- final_thru[!is.na(final_thru$TTI_Cat),]
 
-ggplot(final_thru, aes(x=Alternative, y=occupancy, fill=TTI_Cat)) +
+ggplot(final_thru, aes(x=Alternative, y=persons, fill=TTI_Cat)) +
 # ggplot(final_thru, aes(x=Alternative, y=demand_flow_factoroccupancy, fill=TTI_Cat)) +
   geom_col()+
   facet_wrap(.~direction)+
@@ -1717,12 +1773,12 @@ ggplot(final_thru, aes(x=Alternative, y=occupancy, fill=TTI_Cat)) +
   scale_y_continuous(name="Person Throughput",
   # scale_y_continuous(name="Vehicle Throughput",
                      # labels = scales::comma)+
-                     breaks = seq(0,250000,1000))+
+                     breaks = seq(0,250000,2500))+
   # colScale + fillScale +ggtitle('Person Throughput - 7:30-8:30 17:15-18:15 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 7:30-8:30 17:15-18:15 - Average Weekday Model Occupancy')
-  colScale + fillScale +ggtitle('Person Throughput - 6:00-9:00 15:30-18:30 - Average Weekday')
+  # colScale + fillScale +ggtitle('Person Throughput - 6:00-9:00 15:30-18:30 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 6:00-9:00 15:30-18:30  - Average Weekday Model Occupancy')
-    # colScale + fillScale +ggtitle('Person Throughput - 5:00-10:00 14:00-19:00 - Average Weekday')
+    colScale + fillScale +ggtitle('Person Throughput - 5:00-10:00 14:00-19:00 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 5:00-10:00 14:00-19:00 - Average Weekday Model Occupancy')
 
 ```
@@ -1735,32 +1791,32 @@ ggplot(final_thru, aes(x=Alternative, y=occupancy, fill=TTI_Cat)) +
 ```{r final numbers}
 person_trips <- final_thru %>%
   group_by(Alternative, direction) %>%
-  summarise(person_trips = sum(occupancy))
+  summarise(person_trips = sum(persons))
 
 ff_person_trips <-  final_thru %>%
   filter(TTI_Cat %in% c('<1.0 TTI','1.0 TTI - 1.25 TTI')) %>%
   group_by(Alternative, direction) %>%
-  summarise(person_trips = sum(occupancy))
+  summarise(person_trips = sum(persons))
 
 ```
 
 ```{r}
-# write.csv(PTI, 'Final tables/PTI_5_10_2_7.csv')
-# write.csv(person_trips, 'Final tables/person_trips_5_10_2_7.csv')
-# write.csv(ff_person_trips, 'Final tables/ff_person_trips_5_10_2_7.csv')
-# write.csv(final_delay,'Final tables/final_delay_5_10_2_7.csv')
+write.csv(PTI, 'Final tables/PTI_5_10_2_7_7_23.csv')
+write.csv(person_trips, 'Final tables/person_trips_5_10_2_7_7_23.csv')
+write.csv(ff_person_trips, 'Final tables/ff_person_trips_5_10_2_7_7_23.csv')
+write.csv(final_delay,'Final tables/final_delay_5_10_2_7_7_23.csv')
 
-# write.csv(PTI, 'Final tables/PTI_6_9_330_630.csv')
-# write.csv(person_trips, 'Final tables/person_trips_6_9_330_630.csv')
-# write.csv(ff_person_trips, 'Final tables/ff_person_trips_6_9_330_630.csv')
-# write.csv(final_delay,'Final tables/final_delay_6_9_330_630.csv')
+# write.csv(PTI, 'Final tables/PTI_6_9_330_630_7_22.csv')
+# write.csv(person_trips, 'Final tables/person_trips_6_9_330_630_7_22.csv')
+# write.csv(ff_person_trips, 'Final tables/ff_person_trips_6_9_330_630_7_22.csv')
+# write.csv(final_delay,'Final tables/final_delay_6_9_330_630_7_22.csv')
 
-# write.csv(PTI, 'Final tables/PTI_730_830_1715_1815.csv')
-# write.csv(person_trips, 'Final tables/person_trips_730_830_1715_1815.csv')
-# write.csv(ff_person_trips, 'Final tables/ff_person_trips_730_830_1715_1815.csv')
-# write.csv(final_delay,'Final tables/final_delay_730_830_1715_1815.csv')
+# write.csv(PTI, 'Final tables/PTI_730_830_1715_1815_7_22.csv')
+# write.csv(person_trips, 'Final tables/person_trips_730_830_1715_1815_7_22.csv')
+# write.csv(ff_person_trips, 'Final tables/ff_person_trips_730_830_1715_1815_7_22.csv')
+# write.csv(final_delay,'Final tables/final_delay_730_830_1715_1815_7_22.csv')
 
-# write.csv(pmt_pht_494, 'Final tables/pmt_pht/pmt_pht_494_2040_allday.csv')
+write.csv(pmt_pht_494, 'Final tables/pmt_pht/pmt_pht_494_2040_allday_7_23.csv')
 
 # write.csv(PTI, 'Final tables/PTI_5_10_2_7_2020.csv')
 # write.csv(person_trips, 'Final tables/person_trips_5_10_2_75_2020.csv')
