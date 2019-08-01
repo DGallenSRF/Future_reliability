@@ -5,7 +5,9 @@ output:
     df_print: paged
 ---
 
+
 ```{r setup,message=FALSE, include=FALSE}
+
 knitr::opts_knit$set(root.dir = 'C:/Users/dgallen/Desktop/Projects/Future_reliability')
 
 ##below are a list of packages required to run the markdown file
@@ -767,7 +769,7 @@ plot_predict <- function(Seg){
 ### Prediction Segment 1
 
 ```{r plot predict seg1, fig.width=12}
-plot_predict(1)
+plot_predict(5)
 ```
 
 ## Analyse Prediction Results {.tabset .tabset-fade}
@@ -804,16 +806,16 @@ segment7 <- Rel_p %>%
 TT_heat <-function(data,seg, model, alternative = ' '){ 
   
   heat <- data %>%
-    # filter(Segment == seg) %>% 
+    filter(Segment == seg) %>%
     # mutate(direction = ifelse(Segment < 6,'EB','WB')) %>%
     # filter(direction  == seg) %>% 
-    # select(DateTime, TT_mean, Length, pred = pred_final) %>% 
+    select(DateTime, TT_mean, Length, pred = pred_final) %>%
     mutate(HourMin = format(DateTime, '%H:%M'),
            YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
            mod = model,
-           # TTI = ifelse(mod == TRUE,
-           #              pred,
-           #              TT_mean/(Length/60 * 60)),
+           TTI = ifelse(mod == TRUE,
+                        pred,
+                        TT_mean/(Length/60 * 60)),
            TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
                                    ifelse(TTI <= 4.0 & TTI > 3.5,
                                           '3.5 TTI - 4.0 TTI',
@@ -845,20 +847,94 @@ TT_heat <-function(data,seg, model, alternative = ' '){
 library(RColorBrewer)
 myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
 names(myColors) <- levels(heat$TTI_Cat)
-colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors)
-fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors)
-break_axis <- c('06:00','09:00','12:00','15:00','18:00','21:00')
+colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors, drop=FALSE)
+fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors, drop=FALSE)
+break_y_axis <- c('03:00','06:00','09:00','12:00','15:00','18:00','21:00')
 
 predicted_TF <- ifelse(model == TRUE,'predicted values','measured values')
 
-g <- ggplot(heat) +
+g <-   ggplot(heat) +
   geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
-  theme_tufte(base_size = 15) +
-  scale_y_discrete(breaks = break_axis) +
-  colScale + fillScale +
-  ggtitle(paste('Direction ', seg, 'TTI Heatmap','-',predicted_TF,alternative))
+  # theme_tufte(base_size = 15) +
+  scale_y_discrete(breaks = break_y_axis) +
+  xlab('Month') + ylab('Time of Day')+
+  scale_x_datetime(expand=c(0,0)) +
+  colScale + fillScale + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "white"),
+        panel.border = element_blank())+
+  ggtitle(paste('Segment', seg, 'TTI Heatmap','-',alternative))
 return(g)
 }
+
+
+TT_dir_heat <-function(data,seg, model, alternative = ' '){ 
+  
+  heat <- data %>%
+    filter(direction == seg) %>%
+    # mutate(direction = ifelse(Segment < 6,'EB','WB')) %>%
+    # filter(direction  == seg) %>% 
+    mutate(HourMin = format(DateTime, '%H:%M'),
+           YearDate = as.POSIXct(format(DateTime, '%Y-%m-%d')),
+           mod = model,
+           TTI = ifelse(mod == TRUE,
+                        pred_final,
+                        TTI),
+           TTI_Cat = factor(ifelse(TTI > 4.0,'>4.0 TTI',
+                                   ifelse(TTI <= 4.0 & TTI > 3.5,
+                                          '3.5 TTI - 4.0 TTI',
+                                          ifelse(TTI <= 3.5 & TTI > 3.0,
+                                                 '3.0 TTI - 3.5 TTI',
+                                                 ifelse(TTI <= 3.0 & TTI > 2.5,
+                                                        '2.5 TTI - 3.0 TTI',
+                                                        ifelse(TTI <= 2.5 & TTI > 2.0,
+                                                               '2.0 TTI - 2.5 TTI',
+                                                               ifelse(TTI <= 2.0 & TTI > 1.5,
+                                                                      '1.5 TTI - 2.0 TTI',
+                                                                      ifelse(TTI <= 1.5 & TTI > 1.25,
+                                                                             '1.25 TTI - 1.5 TTI',
+                                                                             ifelse(TTI <= 1.25 & TTI > 1.0 ,
+                                                                                    '1.0 TTI - 1.25 TTI',
+                                                                                    ifelse(TTI <= 1.0 ,
+                                                                                           '<1.0 TT', NA))))))))),
+                            levels = (c('>4.0 TTI',
+                                        '3.5 TTI - 4.0 TTI',
+                                        '3.0 TTI - 3.5 TTI',
+                                        '2.5 TTI - 3.0 TTI',
+                                        '2.0 TTI - 2.5 TTI',
+                                        '1.5 TTI - 2.0 TTI',
+                                        '1.25 TTI - 1.5 TTI',
+                                        '1.0 TTI - 1.25 TTI',
+                                        '<1.0 TT')))) 
+  
+  
+library(RColorBrewer)
+myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
+names(myColors) <- levels(heat$TTI_Cat)
+colScale <- scale_colour_manual(name = "TTI_Cat",values = myColors, drop=FALSE)
+fillScale <- scale_fill_manual(name = "TTI_Cat",values = myColors, drop=FALSE)
+break_y_axis <- c('03:00','06:00','09:00','12:00','15:00','18:00','21:00')
+
+predicted_TF <- ifelse(model == TRUE,'predicted values','measured values')
+
+g <-   ggplot(heat) +
+  geom_tile(aes(x=YearDate,y=HourMin,color = TTI_Cat, fill = TTI_Cat))  +
+  # theme_tufte(base_size = 15) +
+  scale_y_discrete(breaks = break_y_axis) +
+  xlab('Month') + ylab('Time of Day')+
+  scale_x_datetime(expand=c(0,0)) +
+  colScale + fillScale + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "white"),
+        panel.border = element_blank())+
+  ggtitle(paste('Segment', seg, 'TTI Heatmap','-',alternative))
+return(g)
+}
+
 ```
 
 ### SEGMENT 
@@ -891,34 +967,42 @@ Rel_p$DayPeriod <- ifelse((Rel_p$hr_min >= 5.0) & (Rel_p$hr_min < 10.0), 'Mornin
 ```
 
 
-```{r heatmap seg1, fig.width=12}
-segment = 9
-# TT_heat(Rel_p,segment, model = FALSE)
-# 
-# TT_heat(Rel_p,segment, model = TRUE)
-
-```
-
-
 ## Thermometer
+
 
 
 
 ```{r thermometer existing,include = FALSE, message = FALSE}
 
-TT_therm <- Rel_p %>%
+segment = 'WB'
+
+Rel_p_dir$Hour <- hour(Rel_p_dir$DateTime)
+Rel_p_dir$Hour <- as.numeric(Rel_p_dir$Hour)
+Rel_p_dir$minute <- minute(Rel_p_dir$DateTime)
+Rel_p_dir$hr_min <- Rel_p_dir$Hour + Rel_p_dir$minute/60
+
+
+Rel_p_dir$DayPeriod <- ifelse((Rel_p_dir$hr_min >= 5.0) & (Rel_p_dir$hr_min < 10.0), 'Morning',
+                          ifelse((Rel_p_dir$hr_min >=10.0) & (Rel_p_dir$hr_min < 14.0), 'Lunch',
+                                 ifelse((Rel_p_dir$hr_min >= 14.0) & (Rel_p_dir$hr_min < 19.0),'Afternoon',
+                                        ifelse((Rel_p_dir$hr_min >= 19.0) & (Rel_p_dir$hr_min < 23), 'Evening',
+                                               ifelse((Rel_p_dir$hr_min >= 23) | (Rel_p_dir$hr_min < 5.0), 'Night','NA')))))
+
+
+TT_therm <- Rel_p_dir %>% ungroup() %>%
+  dplyr::rename(Segment = direction) %>%
+# TT_therm <- Rel_p %>%
   filter(Segment == segment,
          DayPeriod %in% c('Morning','Afternoon')) %>%
-  filter(Segment == segment) %>%
-  mutate(YearDay = yday(DateTime))%>%
-  select(DateTime, TTI , YearDay)
+  mutate(YearDay = yday(DateTime)) %>%
+  select(DateTime, TTI , YearDay, DayPeriod, Segment)
 
 myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
 # myColors <- colors()[c(29,30,507,552,59,53,652,256,258)]
 quants <- seq(.025,.975,.05)
 therm <- TT_therm %>%
   summarise(quantiles = list(sprintf("%1.1f%%", quants*100)),
-            TTI = list(quantile( TTI ,quants))) %>%
+            TTI = list(quantile(TTI,quants))) %>%
   unnest() %>%
   # mutate(Title = 'Segment 1 Exist') %>%
   select(quantiles, TTI)
@@ -958,45 +1042,64 @@ getwd()
 
 ```{r thermometer predicted ,include = FALSE, message = FALSE, fig.height=25}
 
-# segment = 9
-# TT_therm <- MNPass_2040_FF %>%
-# # TT_therm <- MNPass_2040_remaining_lanes %>%
-#   filter(Segment == segment,
-#          DayPeriod %in% c('Morning','Afternoon')) %>%
-#   filter(Segment == segment) %>%
-#   mutate(YearDay = yday(DateTime))%>%
-#   select(DateTime, pred_final , YearDay)
+add_time_periods <- function(d) {
+  
+d$Hour <- hour(d$DateTime)
+d$Hour <- as.numeric(d$Hour)
+d$minute <- minute(d$DateTime)
+d$hr_min <- d$Hour + d$minute/60
+
+
+d$DayPeriod <- ifelse((d$hr_min >= 5.0) & (d$hr_min < 10.0), 'Morning',
+                          ifelse((d$hr_min >=10.0) & (d$hr_min < 14.0), 'Lunch',
+                                 ifelse((d$hr_min >= 14.0) & (d$hr_min < 19.0),'Afternoon',
+                                        ifelse((d$hr_min >= 19.0) & (d$hr_min < 23), 'Evening',
+                                               ifelse((d$hr_min >= 23) | (d$hr_min < 5.0), 'Night','NA')))))
+  return(data.frame(d))
+}
+
+
+
 # 
-# myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
-# 
-# quants <- seq(.025,.975,.05)
-# therm <- TT_therm %>%
-#   summarise(quantiles = list(sprintf("%1.1f%%", quants*100)),
-#             TTI_final = list(quantile(pred_final ,quants, na.rm = TRUE))) %>%
-#   unnest() %>%
-#   # mutate(Title = 'Segment 1 Exist') %>%
-#   select(quantiles, TTI_final)
-# 
-# therm_table <- flextable(therm)
-# # theme_vanilla(therm_table)
-# therm_table <- bg(therm_table, i = ~ TTI_final > 4, j =  ~ TTI_final ,bg = myColors[[1]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 4.0 & TTI_final> 3.5,j =  ~ TTI_final ,bg = myColors[[2]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 3.5 & TTI_final> 3.0,j =  ~ TTI_final ,bg = myColors[[3]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 3.0 & TTI_final> 2.5,j =  ~ TTI_final ,bg = myColors[[4]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 2.5 & TTI_final> 2.0,j =  ~ TTI_final ,bg = myColors[[5]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 2.0 & TTI_final> 1.5,j =  ~ TTI_final ,bg = myColors[[6]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 1.5 & TTI_final> 1.25,j =  ~ TTI_final ,bg = myColors[[7]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 1.25 & TTI_final> 1.0,j =  ~ TTI_final ,bg = myColors[[8]])
-# therm_table <- bg(therm_table, i = ~ TTI_final <= 1.0 ,j =  ~ TTI_final ,bg = myColors[[9]])
-# therm_table <- color(therm_table, j =  ~ TTI_final , color = "white")
-# therm_table <- color(therm_table, i = ~ TTI_final <= 1.5 & TTI_final> 1.25,j =  ~ TTI_final , color = "black")
-# therm_table <- add_header(therm_table, quantiles = segment, TTI_final = 'Pred ')
-# 
-# # read_docx() %>% 
-# #   # body_add_flextable(therm_table) %>% 
-# #   body_add_img(therm_table) %>% 
-# #   print(target = "flextable.docx")
-# therm_table
+TT_therm <- add_time_periods(agg_mnpass_remain) %>%
+  dplyr::rename(pred_final = TTI) %>%
+# TT_therm <- Rel_p_dir %>% ungroup() %>%
+  dplyr::rename(Segment = direction) %>%
+  filter(Segment == segment,
+         DayPeriod %in% c('Morning','Afternoon')) %>%
+  mutate(YearDay = yday(DateTime))%>%
+  select(DateTime, pred_final , YearDay)
+
+myColors <- colors()[c(24,30,507,552,59,53,652,256,258)]
+
+quants <- seq(.025,.975,.05)
+therm <- TT_therm %>%
+  summarise(quantiles = list(sprintf("%1.1f%%", quants*100)),
+            TTI_final = list(quantile(pred_final ,quants, na.rm = TRUE))) %>%
+  unnest() %>%
+  # mutate(Title = 'Segment 1 Exist') %>%
+  select(quantiles, TTI_final)
+
+therm_table <- flextable(therm)
+# theme_vanilla(therm_table)
+therm_table <- bg(therm_table, i = ~ TTI_final > 4, j =  ~ TTI_final ,bg = myColors[[1]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 4.0 & TTI_final> 3.5,j =  ~ TTI_final ,bg = myColors[[2]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 3.5 & TTI_final> 3.0,j =  ~ TTI_final ,bg = myColors[[3]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 3.0 & TTI_final> 2.5,j =  ~ TTI_final ,bg = myColors[[4]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 2.5 & TTI_final> 2.0,j =  ~ TTI_final ,bg = myColors[[5]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 2.0 & TTI_final> 1.5,j =  ~ TTI_final ,bg = myColors[[6]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 1.5 & TTI_final> 1.25,j =  ~ TTI_final ,bg = myColors[[7]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 1.25 & TTI_final> 1.0,j =  ~ TTI_final ,bg = myColors[[8]])
+therm_table <- bg(therm_table, i = ~ TTI_final <= 1.0 ,j =  ~ TTI_final ,bg = myColors[[9]])
+therm_table <- color(therm_table, j =  ~ TTI_final , color = "white")
+therm_table <- color(therm_table, i = ~ TTI_final <= 1.5 & TTI_final> 1.25,j =  ~ TTI_final , color = "black")
+therm_table <- add_header(therm_table, quantiles = segment, TTI_final = 'Pred ')
+
+# read_docx() %>%
+#   # body_add_flextable(therm_table) %>%
+#   body_add_img(therm_table) %>%
+#   print(target = "flextable.docx")
+therm_table
 ```
 
 
@@ -1006,6 +1109,11 @@ getwd()
 my_cols <- c('Segment', 'DateTime', 'Delay_type', 'Quantile_u',
              'Quantile_l', 'Demand_Hour_Lane', 'Flow_cong_Hour_Lane', 'Density_cong_Lane',
              'Index', 'br','factor', 'Lanes', 'Diff', 'TTI', 'TT_mean','Length','DayPeriod','Hour','hr_min')
+
+allday <- c('Morning','Lunch','Afternoon','Evening','Night')
+allweek <- c('Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday')
+wkday <- c('Monday','Tuesday','Wednesday','Thursday','Friday')
+peak <-  c('Morning','Afternoon')
 
 Exist_Demand <- Rel_p %>%
   select(one_of(my_cols))%>%
@@ -1043,7 +1151,7 @@ forecasts <- read.csv('Forecasts.csv', stringsAsFactors = FALSE) %>%
 # dataset was developed for 35W Gap project.
 # these equations will be used to calculate MNPass demand with the remaining demand spread across the 
 # remaining GP lanes
-MNPass_eqt <- read.csv('./mnpass_equations.csv') %>%
+MNPass_eqt <- read.csv('./mnpass_equations_vissim_calibrated.csv') %>%
   mutate(Max_MnPASS_Demand = as.numeric(str_extract(Max_MnPASS_Demand,"\\d+")))
 
 # MNPass_eqt <-  MNPass_eqt %>%
@@ -1157,14 +1265,6 @@ ggplot(aes(x = MNPass_demand_hour_final, y = MNPass_demand_hour_final/Remaining_
 ## Alternatives Heatmaps
 
 ```{r}
-segment = 8
-# TT_heat(no_change_2040,segment, model = TRUE,'no_change_2040')
-# TT_heat(GP_2040,segment, model = TRUE, 'GP_2040')
-# TT_heat(MNPass_2040_FF,segment, model = TRUE, 'MNPass_2040')
-# TT_heat(MNPass_2040_remaining_lanes,segment, model = TRUE, 'MNPass_2040_remaining_lanes')
-```
-
-```{r}
 review = MNPass_2040_FF %>%
   filter(segment==9,
          pred_final > 2)
@@ -1247,7 +1347,8 @@ return(d)
 '%!in%' <- function(x,y)!('%in%'(x,y))
 
 
-agg_vehicle_thru <- function(input_d, alternative, group, dp = c('Morning','Afternoon')){
+agg_vehicle_thru <- function(input_d, alternative, group, 
+                             dp = c('Morning','Afternoon'), wkday = wkday){
 
 # input_d <-  vehicle_no_change
 # alternative <- no_change_2040
@@ -1261,12 +1362,12 @@ throughput <- alternative %>%
   merge(input_d) %>%
   mutate(Flow_2040 = Demand_Hour_2040_all_lanes / demand_flow_factor,
          VMT_2040_15 = Flow_2040 * 0.25 * Length,
-         wkday=weekdays(.$DateTime),
+         weekday=weekdays(.$DateTime),
          direction = ifelse(Segment < 6,'EB','WB')) %>%
          # cuts = cut(.$pred_final,bins,echo.lowest = TRUE),
          # TTI = extract_last_no(cuts)) %>%
-  select(DateTime, Segment, wkday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF) %>%
-  filter(wkday %!in% c('Saturday','Sunday')) %>%
+  select(DateTime, Segment, weekday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF) %>%
+  filter(weekday %in% wkday) %>%
   mutate(TT_hour = (TTI * Length) / FF) 
 
 dir_len <- throughput %>%
@@ -1314,12 +1415,12 @@ throughput <- throughput %>%
                                '1.5 TTI - 2.0 TTI',
                                '1.25 TTI - 1.5 TTI',
                                '1.0 TTI - 1.25 TTI',
-                               '<1.0 TTI')))) %>%
+                               '<1.0 TTI'))))
   # group_by(Segment, TTI_Cat) %>%
-  group_by(direction, TTI_Cat) %>%
-  summarise(thru = sum(VMT_direction_15min)/261,
-            Length = mean(direction_length)) %>%
-  mutate(Vol = thru/Length)
+  # group_by(direction, TTI_Cat) %>%
+  # summarise(thru = sum(VMT_direction_15min)/261,
+  #           Length = mean(direction_length)) %>%
+  # mutate(Vol = thru/Length)
 
 return(throughput)
 
@@ -1409,17 +1510,13 @@ return(delay)
 
 }
 
-allday <- c('Morning','Lunch','Afternoon','Evening','Night')
-allweek <- c('Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday')
-wkday <- c('Monday','Tuesday','Wednesday','Thursday','Friday')
-peak <-  c('Morning','Afternoon')
 
 PMT_PHT <- function(input_d, alternative,dp = allday,
-                    grp = 'direction',occupancy,wd = allweek,occ_dat) {
+                    grp = 'direction',wd = allweek,occ_dat) {
 
 #
-# input_d <-  vehicle_GP
-# alternative <- GP_2040
+# input_d <-  vehicle_no_change
+# alternative <- no_change_2040
 # occupancy <- occ_mnpass_gp
 # # input_d <-  vehicle_MNPass_ff_offpeak
 # # alternative <- pmt_pht_mnpass_ff_offpeak
@@ -1430,7 +1527,7 @@ PMT_PHT <- function(input_d, alternative,dp = allday,
 # dp = allday
 # wd=allweek
 # occ_dat <- occ %>%
-#   filter(Alternative == 'MnPass_ff') %>%
+#   filter(Alternative == 'no_change') %>%
 #   select(occupancy,DayPeriod,weekperiod)
 
 results = list()  
@@ -1445,9 +1542,9 @@ throughput = alternative %>%
          weekperiod = ifelse(weekday %in% wkday,'weekday','weekend')) %>%
   filter(DayPeriod %in% dp,
          weekday %in% wd) %>%
-  select(DateTime, Segment, weekday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF,DayPeriod) %>%
+  select(DateTime, Segment, weekday, VMT_2040_15, doy, TTI = pred_final, direction, Length, FF,DayPeriod,weekperiod) %>%
   mutate(TT_hour = (TTI * Length) / FF) %>%
-  merge(occ_dat)
+  merge(occ_dat, by = c('DayPeriod','weekperiod'))
 
 results['PHT'] =  throughput %>%
   summarise(PHT = sum((TT_hour * VMT_2040_15 * occupancy) / Length,na.rm = TRUE))
@@ -1462,6 +1559,23 @@ return(results)
 
 ```
 
+```{r, fig.width=10}
+segment = 9
+TT_heat(Rel_p,segment, model = FALSE, 'Existing') 
+ggsave(paste('S',segment,'Existing.png'))
+TT_heat(Rel_p,segment, model = TRUE, 'Modeled Existing')
+ggsave(paste('S',segment,'Modeled Existing.png'))
+TT_heat(no_change_2040,segment, model = TRUE,'No Build 2040')
+ggsave(paste('S',segment,'No Build 2040.png'))
+TT_heat(GP_2040,segment, model = TRUE, 'GP 2040')
+ggsave(paste('S',segment,'GP 2040.png'))
+TT_heat(MNPass_2040_FF,segment, model = TRUE, 'MNPass 2040')
+ggsave(paste('S',segment,'MNPass 2040.png'))
+TT_heat(MNPass_2040_remaining_lanes,segment, model = TRUE, 'MNPass 2040 GP lanes')
+ggsave(paste('S',segment,'MNPass 2040 GP lanes.png'))
+```
+
+
 ```{r}
 occ <- read.csv("H:/Projects/11000/11155/TraffStudy/Reliability/Reliability_processing/Future/reliability_occupancy.csv")
 colnames(occ) <- c('Alternative','occupancy','DayPeriod')
@@ -1471,8 +1585,9 @@ occ <- occ %>%
   mutate(weekperiod = 'weekend',
          occupancy = 1.07) %>%
   bind_rows(occ)
-# occ[grepl('*ff',occ$Alternative), 'occupancy'] <- 1.84
+occ[grepl('*ff',occ$Alternative), 'occupancy'] <- 1.64
 ```
+
 
 ```{r no change}
 
@@ -1505,10 +1620,10 @@ delay_no_change$Alternative <- 'no_change'
 
 occ_d <- occ %>%
   filter(Alternative == 'no_change') %>%
-  select(occupancy,DayPeriod)
+  select(occupancy,DayPeriod,weekperiod)
 
 vehicle_no_change <-  vehicle_tru(no_change_2040, dp=allday)
-pmt_pht_no_change <- PMT_PHT(vehicle_no_change,no_change_2040,occupancy = occ_no_change, occ_dat = occ_d)
+pmt_pht_no_change <- PMT_PHT(vehicle_no_change,no_change_2040,occ_dat = occ_d)
 pmt_pht_no_change['alternative'] = 'no_change'
 ```
 
@@ -1542,10 +1657,10 @@ delay_GP$Alternative <- 'GP'
 
 occ_d <- occ %>%
   filter(Alternative == 'GP') %>%
-  select(occupancy,DayPeriod)
+  select(occupancy,DayPeriod,weekperiod)
 
 vehicle_GP <-  vehicle_tru(GP_2040,dp=allday)
-pmt_pht_GP <- PMT_PHT(vehicle_GP,GP_2040,occupancy = occ_GP,occ_dat = occ_d)
+pmt_pht_GP <- PMT_PHT(vehicle_GP,GP_2040,occ_dat = occ_d)
 pmt_pht_GP['alternative'] = 'GP'
 ```
 
@@ -1588,12 +1703,12 @@ delay_MnPass_ff$Alternative <- 'MNPass_ff'
 
 occ_d <- occ %>%
   filter(Alternative == 'MnPass_ff') %>%
-  select(occupancy,DayPeriod)
+  select(occupancy,DayPeriod,weekperiod)
 
 vehicle_MNPass_ff <-  vehicle_tru_mnPass_ff(MNPass_2040_FF,dp = allday)
 pmt_pht_mnpass_ff <- select(MNPass_2040_FF, -Demand_Hour_2040_all_lanes) %>%
   mutate(Demand_Hour_2040_all_lanes = MNPass_demand_hour_final) %>%
-  PMT_PHT(vehicle_MNPass_ff,alternative = .,occupancy = occ_mnpass_ff,occ_dat= occ_d)
+  PMT_PHT(vehicle_MNPass_ff,alternative = .,occ_dat= occ_d)
 pmt_pht_mnpass_ff['alternative']= 'MnPass_ff'
 
 
@@ -1656,7 +1771,7 @@ vehicle_MNPass_remain <-  vehicle_tru_mnPass_remain(MNPass_2040_remaining_lanes,
                                                 dp = allday)
 pmt_pht_mnpass_remain <- select(MNPass_2040_remaining_lanes, -Demand_Hour_2040_all_lanes) %>%
   mutate(Demand_Hour_2040_all_lanes = Remaining_all_lanes_demand_hour) %>%
-  PMT_PHT(vehicle_MNPass_remain,alternative = .,occupancy = occ_mnpass_gp,occ_dat=occ_d)
+  PMT_PHT(vehicle_MNPass_remain,alternative = .,occ_dat=occ_d)
 pmt_pht_mnpass_remain['alternative'] = 'MnPass_GP'
 
 
@@ -1734,8 +1849,68 @@ pmt_pht_494 <- rbind(pmt_pht_GP, pmt_pht_mnpass_ff, pmt_pht_mnpass_remain,
 ```
 
 ```{r}
+dir_len_existing <- Rel_p %>%
+  filter(Segment != 1) %>%
+  mutate(direction = ifelse(Segment < 6,'EB','WB')) %>%
+  group_by(Segment, direction) %>%
+  summarise(f = mean(FF)) %>%
+  group_by(direction) %>%
+  summarise(FF_direction = mean(f)) %>%
+  mutate(direction_length = ifelse(direction == 'EB',8.7,9.5))
+
+Rel_p_dir <- Rel_p %>%
+  filter(Segment != 1) %>%
+  mutate(direction = ifelse(Segment < 6,'EB','WB')) %>%
+  merge(dir_len_existing) %>%
+  mutate(ff_tt_hour = Length/FF,
+         tt_hour = TTI * ff_tt_hour,
+         tt_hour_pred = pred_final * ff_tt_hour) %>%
+  group_by(DateTime, direction) %>%
+  summarise(VMT_direction_15min = sum(VMT_total_SRF),
+            TT_hour_direction_15min = sum(tt_hour),
+            TT_hour_direction_15min_pred = sum(tt_hour_pred),
+            direction_length  = max(direction_length),
+            FF_direction = max(FF_direction)) %>%
+  mutate(FF_TT_hour_direction = direction_length / FF_direction,
+         TTI = TT_hour_direction_15min / FF_TT_hour_direction,
+         pred_final = TT_hour_direction_15min_pred / FF_TT_hour_direction) 
+```
+
+```{r, fig.width=10}
 
 
+vehicle_no_change <-  vehicle_tru(no_change_2040, dp=allday)
+agg_nochange <- agg_vehicle_thru((vehicle_no_change),(no_change_2040), dp = allday, wkday = allweek )
+
+
+vehicle_GP <- vehicle_tru(GP_2040,dp=allday)
+agg_GP <- agg_vehicle_thru(vehicle_GP, GP_2040, dp=allday,wkday=allweek)
+
+
+vehicle_MNPass_ff <- vehicle_tru_mnPass_ff(MNPass_2040_FF, dp=allday)
+agg_mnpassff <- agg_vehicle_thru(vehicle_MNPass_ff, MNPass_2040_FF, dp=allday, wkday = allweek)
+
+
+vehicle_MNPass_remain <- vehicle_tru_mnPass_remain(MNPass_2040_remaining_lanes,dp=allday)
+agg_mnpass_remain <- agg_vehicle_thru(vehicle_MNPass_remain,MNPass_2040_remaining_lanes,dp=allday,wkday = allweek)
+
+```
+
+```{r}
+segment = 'EB'
+
+TT_dir_heat(Rel_p_dir,segment, model = FALSE, 'Existing')
+ggsave(paste(segment,'Existing.png'))
+TT_dir_heat(Rel_p_dir,segment, model = TRUE, 'Modeled Existing')
+ggsave(paste(segment,'Modeled Existing.png'))
+TT_dir_heat(agg_nochange, segment, model = FALSE,'No Build 2040')
+ggsave(paste(segment,'No Build 2040.png'))
+TT_dir_heat(agg_GP,segment, model = FALSE, 'GP 2040')
+ggsave(paste(segment,'GP 2040.png'))
+TT_dir_heat(agg_mnpassff,segment, model = FALSE, 'MNPass Lane 2040')
+ggsave(paste(segment,'MNPass Lane 2040.png'))
+TT_dir_heat(agg_mnpass_remain,segment, model = FALSE, 'MNPass 2040 GP lanes')
+ggsave(paste(segment,'MNPass 2040 GP lane.png'))
 ```
 
 
@@ -1768,17 +1943,17 @@ final_thru <- final_thru[!is.na(final_thru$TTI_Cat),]
 ggplot(final_thru, aes(x=Alternative, y=persons, fill=TTI_Cat)) +
 # ggplot(final_thru, aes(x=Alternative, y=demand_flow_factoroccupancy, fill=TTI_Cat)) +
   geom_col()+
-  facet_wrap(.~direction)+
-  # facet_wrap(.~Segment)+
+  # facet_wrap(.~direction)+
+  facet_wrap(.~Segment)+
   scale_y_continuous(name="Person Throughput",
   # scale_y_continuous(name="Vehicle Throughput",
                      # labels = scales::comma)+
                      breaks = seq(0,250000,2500))+
-  # colScale + fillScale +ggtitle('Person Throughput - 7:30-8:30 17:15-18:15 - Average Weekday')
+  colScale + fillScale +ggtitle('Person Throughput - 7:30-8:30 17:15-18:15 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 7:30-8:30 17:15-18:15 - Average Weekday Model Occupancy')
   # colScale + fillScale +ggtitle('Person Throughput - 6:00-9:00 15:30-18:30 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 6:00-9:00 15:30-18:30  - Average Weekday Model Occupancy')
-    colScale + fillScale +ggtitle('Person Throughput - 5:00-10:00 14:00-19:00 - Average Weekday')
+    # colScale + fillScale +ggtitle('Person Throughput - 5:00-10:00 14:00-19:00 - Average Weekday')
   # colScale + fillScale +ggtitle('Vehicle Throughput - 5:00-10:00 14:00-19:00 - Average Weekday Model Occupancy')
 
 ```
@@ -1801,10 +1976,10 @@ ff_person_trips <-  final_thru %>%
 ```
 
 ```{r}
-write.csv(PTI, 'Final tables/PTI_5_10_2_7_7_23.csv')
-write.csv(person_trips, 'Final tables/person_trips_5_10_2_7_7_23.csv')
-write.csv(ff_person_trips, 'Final tables/ff_person_trips_5_10_2_7_7_23.csv')
-write.csv(final_delay,'Final tables/final_delay_5_10_2_7_7_23.csv')
+# write.csv(PTI, 'Final tables/PTI_5_10_2_7_7_23.csv')
+# write.csv(person_trips, 'Final tables/person_trips_5_10_2_7_7_23.csv')
+# write.csv(ff_person_trips, 'Final tables/ff_person_trips_5_10_2_7_7_23.csv')
+# write.csv(final_delay,'Final tables/final_delay_5_10_2_7_7_23.csv')
 
 # write.csv(PTI, 'Final tables/PTI_6_9_330_630_7_22.csv')
 # write.csv(person_trips, 'Final tables/person_trips_6_9_330_630_7_22.csv')
@@ -1816,7 +1991,7 @@ write.csv(final_delay,'Final tables/final_delay_5_10_2_7_7_23.csv')
 # write.csv(ff_person_trips, 'Final tables/ff_person_trips_730_830_1715_1815_7_22.csv')
 # write.csv(final_delay,'Final tables/final_delay_730_830_1715_1815_7_22.csv')
 
-write.csv(pmt_pht_494, 'Final tables/pmt_pht/pmt_pht_494_2040_allday_7_23.csv')
+# write.csv(pmt_pht_494, 'Final tables/pmt_pht_494_2040_allday_7_23_1.84.csv')
 
 # write.csv(PTI, 'Final tables/PTI_5_10_2_7_2020.csv')
 # write.csv(person_trips, 'Final tables/person_trips_5_10_2_75_2020.csv')
